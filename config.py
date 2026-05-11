@@ -132,7 +132,7 @@ DEFAULT_COPY_DATA = {
     "cert_greeting": "随喜赞叹!",
     "cert_name": "法名",
     "cert_body": (
-        "完成了空间主理人经营路径六步成长的第一步资质所需学习的全部内容及实操实践，并在传帮带及修学素养、利他素养和业务素养上达到了标准，获得"
+        "完成了空间主理人经营路径六步成长的第一步资质所需学习的全部内容及实践，并在传帮带及修学素养、利他素养和业务素养上达到了标准，获得"
     ),
     "cert_title_cn": "空间主理人经营路径\n学人资格",
     "cert_title_eg": "Certified Space Curator\nManagement Path Practitioner",
@@ -415,7 +415,7 @@ TEMPLATE_MASTER_CONFIG = {
             "course_title_cn":  (160,  695),
             "day_date_1":  (350, 464),  "day_week_1":  (568, 490),  "day_time_1":  (350, 566),  "day_cont_1":  (568, 566),
             "day_date_2":  (350, 650),  "day_week_2":  (568, 676),  "day_time_2":  (350, 752),  "day_cont_2":  (568, 752),
-            "day_date_3":  (350, 836),  "day_week_3":  (568, 882),  "day_time_3":  (350, 938),  "day_cont_3":  (568, 938),
+            "day_date_3":  (350, 836),  "day_week_3":  (568, 862),  "day_time_3":  (350, 938),  "day_cont_3":  (568, 938),
             "day_date_4":  (350, 1022), "day_week_4":  (568, 1048), "day_time_4":  (350, 1124), "day_cont_4":  (568, 1124),
             "day_date_5":  (350, 1208), "day_week_5":  (568, 1234), "day_time_5":  (350, 1310), "day_cont_5":  (568, 1310),
             "day_date_6":  (350, 1394), "day_week_6":  (568, 1420), "day_time_6":  (350, 1496), "day_cont_6":  (568, 1496),
@@ -452,7 +452,7 @@ TEMPLATE_MASTER_CONFIG = {
             "course_title_cn":  (160,  695),
             "day_date_1":  (350, 464),  "day_week_1":  (568, 490),  "day_time_1":  (350, 566),  "day_cont_1":  (568, 566),
             "day_date_2":  (350, 650),  "day_week_2":  (568, 676),  "day_time_2":  (350, 752),  "day_cont_2":  (568, 752),
-            "day_date_3":  (350, 836),  "day_week_3":  (568, 882),  "day_time_3":  (350, 938),  "day_cont_3":  (568, 938),
+            "day_date_3":  (350, 836),  "day_week_3":  (568, 862),  "day_time_3":  (350, 938),  "day_cont_3":  (568, 938),
             "day_date_4":  (350, 1022), "day_week_4":  (568, 1048), "day_time_4":  (350, 1124), "day_cont_4":  (568, 1124),
             "day_date_5":  (350, 1208), "day_week_5":  (568, 1234), "day_time_5":  (350, 1310), "day_cont_5":  (568, 1310),
             "day_date_6":  (350, 1394), "day_week_6":  (568, 1420), "day_time_6":  (350, 1496), "day_cont_6":  (568, 1496),
