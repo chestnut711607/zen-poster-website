@@ -6,6 +6,8 @@ import os
 import streamlit as st
 from PIL import Image
 
+from download_fonts import download_fonts
+download_fonts()
 from config import DEFAULT_COPY_DATA, TEMPLATE_MASTER_CONFIG, TEMPLATE_TYPES
 from media import get_gallery_file_list, load_thumbnail_image
 from poster import (
