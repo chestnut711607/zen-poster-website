@@ -2,9 +2,13 @@ import base64
 import io
 import logging
 import os
+import json
 
 import streamlit as st
 from PIL import Image
+
+from datetime import datetime
+import json
 
 from download_fonts import download_fonts
 download_fonts()
@@ -17,6 +21,12 @@ from poster import (
     paint_poster,
     paint_poster_step1_preview,
 )
+from auth import require_login, render_user_bar          # ← 新增
+from database import save_history, get_user_history      # ← 新增
+from modules.photographer import render_photographer_page
+from modules.designer import render_designer_page
+from modules.admin import render_admin_page
+from modules.history import render_history_page         # ← 新增
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,13 +35,53 @@ logger = logging.getLogger(__name__)
 # 【配置与初始化】
 # =========================================================
 st.set_page_config(page_title="海报矩阵系统", layout="wide")
+# 管理员独立入口
+if st.query_params.get("admin") == "1":
+    from modules.admin import render_admin_login_page
+    render_admin_login_page()
+    st.stop()
+
+# ── 登录拦截（放在 set_page_config 之后、所有其他代码之前）──
+username, current_role = require_login()   # 未登录时自动显示登录页并 stop
+
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_BG_DIR = os.path.join(BASE_DIR, "assets", "backgrounds")
 FONT_DIR = BASE_DIR
 os.makedirs(ASSETS_BG_DIR, exist_ok=True)
 
+if st.session_state.get("show_history"):
+    if current_role == "user":
+        from modules.history import render_history_page
+        if st.sidebar.button("← 返回制作海报", use_container_width=True):
+            st.session_state.show_history = False
+            st.rerun()
+        render_history_page(username)
+        st.stop()
+    elif current_role == "designer":
+        from modules.history import render_designer_history_page
+        if st.sidebar.button("← 返回工作台", use_container_width=True):
+            st.session_state.show_history = False
+            st.rerun()
+        render_designer_history_page(username)
+        st.stop()
+
+# ── 根据当前身份路由到对应页面 ──
+if current_role == "photographer":
+    render_photographer_page(username)
+    st.stop()
+
+elif current_role == "designer":
+    render_designer_page(username)
+    st.stop()
+
+elif current_role == "admin":
+    render_admin_page(username)
+    st.stop()
+
 # 初始化 State
 if 'step' not in st.session_state: st.session_state.step = 1
+if st.session_state.step not in (1, 2): st.session_state.step = 1
 if 'chosen_template' not in st.session_state: st.session_state.chosen_template = None
 if 'user_bg' not in st.session_state: st.session_state.user_bg = None
 if 'last_template_name' not in st.session_state: st.session_state.last_template_name = None
@@ -50,39 +100,80 @@ def gallery_modal():
     if st.session_state.get('user_bg') is not None:
         return
     st.markdown("点击图片下方的 **✏️ 选择** 按钮即可应用并关闭窗口。")
-    gallery_files = get_gallery_file_list(ASSETS_BG_DIR)
-    if not gallery_files:
-        st.warning("图库暂时为空。\n请将图片放入 `assets/backgrounds` 文件夹。")
+
+    from database import PHOTO_CATEGORIES, ZEN_PROJECT_SUBCATEGORIES, get_approved_photos
+
+    # 一级分类筛选
+    main_cat = st.selectbox("大分类", ["全部"] + PHOTO_CATEGORIES, key="gallery_main_cat")
+
+    # 二级分类（禅意项目才显示）
+    category = None
+    sub_cat = None
+    if main_cat == "禅意项目":
+        sub_cat = st.selectbox("子分类", ["全部"] + ZEN_PROJECT_SUBCATEGORIES, key="gallery_sub_cat")
+        if sub_cat == "全部":
+            category = "禅意项目"
+        else:
+            category = f"禅意项目/{sub_cat}"
+    elif main_cat != "全部":
+        category = main_cat
+
+    # 来源1：本地 assets/backgrounds/
+    from modules.designer import _get_local_photo_category
+    local_files = get_gallery_file_list(ASSETS_BG_DIR)
+    local_photos = [{"path": os.path.join(ASSETS_BG_DIR, f), "name": f,
+                     "category": _get_local_photo_category(f)} for f in local_files]
+
+    # 按分类筛选本地图片
+    if main_cat == "全部":
+        filtered_local = local_photos
+    elif main_cat == "禅意项目":
+        if sub_cat == "全部" or sub_cat is None:
+            filtered_local = [p for p in local_photos if p["category"].startswith("禅意项目")]
+        else:
+            filtered_local = [p for p in local_photos if p["category"] == f"禅意项目/{sub_cat}"]
+    else:
+        filtered_local = [p for p in local_photos if p["category"] == main_cat]
+
+    # 来源2：摄影师上传并审核通过的图片
+    approved = get_approved_photos(category=category)
+    db_photos = [{"path": p["filepath"], "name": p["filename"],
+                  "category": p["category"]} for p in approved
+                 if os.path.exists(p["filepath"])]
+
+    all_photos = filtered_local + db_photos
+
+    if not all_photos:
+        st.info("该分类暂无图片")
         return
-    n = len(gallery_files)
+
+    # 分页
+    n = len(all_photos)
     n_pages = max(1, (n + GALLERY_MODAL_PAGE_SIZE - 1) // GALLERY_MODAL_PAGE_SIZE)
     page_labels = [
         f"{i * GALLERY_MODAL_PAGE_SIZE + 1}–{min((i + 1) * GALLERY_MODAL_PAGE_SIZE, n)} / 共{n}张"
         for i in range(n_pages)
     ]
-    page = st.selectbox(
-        "分页",
-        range(n_pages),
-        format_func=lambda i: page_labels[i],
-        label_visibility="collapsed",
-        key="gallery_modal_page",
-    )
+    page = st.selectbox("分页", range(n_pages),
+                        format_func=lambda i: page_labels[i],
+                        label_visibility="collapsed",
+                        key="gallery_modal_page_v2")
     offset = int(page) * GALLERY_MODAL_PAGE_SIZE
-    page_files = gallery_files[offset : offset + GALLERY_MODAL_PAGE_SIZE]
+    page_photos = all_photos[offset: offset + GALLERY_MODAL_PAGE_SIZE]
 
     cols = st.columns(5)
-    for j, filename in enumerate(page_files):
-        file_path = os.path.join(ASSETS_BG_DIR, filename)
+    for j, p in enumerate(page_photos):
         with cols[j % 5]:
-            img = load_thumbnail_image(file_path, max_width=280)
-            if img:
-                st.image(img, use_container_width=True, caption=None)
-                if st.button("选择", key=f"modal_{offset + j}_{filename}", use_container_width=True, type="primary"):
-                    st.session_state.user_bg = file_path
-                    st.session_state.sub_step = 'choose_template'
-                    st.rerun()
-            else:
-                st.error("加载失败")
+            from PIL import Image as PILImage
+            img = PILImage.open(p["path"])
+            img.thumbnail((280, 400))
+            st.image(img, use_container_width=True,
+                     caption=p["category"].split("/")[-1])
+            if st.button("选择", key=f"modal_{offset + j}_{p['name']}",
+                         use_container_width=True, type="primary"):
+                st.session_state.user_bg = p["path"]
+                st.session_state.sub_step = 'choose_template'
+                st.rerun()
 
 # =========================================================
 # 【逻辑函数】
@@ -498,7 +589,7 @@ if st.session_state.step == 1:
                     thumb = _poster_thumb_for_ui(img_p, max_side=420)
                     if thumb:
                         st.image(thumb, use_container_width=True, caption=name)
-                        if st.button(f"编辑此模版", key=f"sel_{i}", use_container_width=True):
+                        if st.button("编辑此模版", key=f"sel_{i}", use_container_width=True):
                             st.session_state.chosen_template = (name, cfg)
                             st.session_state.last_template_name = name
                             st.session_state.step = 2
@@ -651,7 +742,8 @@ elif st.session_state.step == 2:
                 unique_key = f"inp_{name}_{key}"
                 if key == "title_text_cn":
                     msg = st.session_state.get(f"{unique_key}_msg", "")
-                    if msg: st.warning(f"⚠️ {msg}", icon="⚠️")
+                    if msg:
+                        st.warning(msg)
                     val = st.text_area(
                         label_name,
                         value=st.session_state.get(unique_key, default_val),
@@ -683,6 +775,21 @@ elif st.session_state.step == 2:
         buf = io.BytesIO()
         final_img.save(buf, format='PNG')
         img_bytes = buf.getvalue()
+
+        # 保存历史记录
+        poster_save_dir = os.path.join(BASE_DIR, "uploads", "history")
+        os.makedirs(poster_save_dir, exist_ok=True)
+        poster_filename = f"{username}_{name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+        poster_save_path = os.path.join(poster_save_dir, poster_filename)
+        final_img.save(poster_save_path, format='PNG')
+        save_history(
+            username=username,
+            template_name=name,
+            bg_path=str(st.session_state.user_bg) if st.session_state.user_bg else "",
+            user_inputs=json.dumps(user_input_data, ensure_ascii=False),
+            poster_path=poster_save_path,
+        )
+
         b64_data = base64.b64encode(img_bytes).decode('utf-8')
 
         html_code = f"""

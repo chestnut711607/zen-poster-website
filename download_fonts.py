@@ -1,5 +1,4 @@
 import os
-import gdown
 
 FONT_URLS = {
     "HarmonyOS_Sans_SC_Light.ttf": "1AjDV1ZWGm8obYB2Ikvq1h_OamMT2Gty4",
@@ -12,6 +11,23 @@ FONT_URLS = {
 }
 
 def download_fonts(font_dir="."):
+    missing_fonts = [
+        filename
+        for filename in FONT_URLS
+        if not os.path.exists(os.path.join(font_dir, filename))
+    ]
+    if not missing_fonts:
+        for filename in FONT_URLS:
+            print(f"字体已存在: {filename}")
+        return
+
+    try:
+        import gdown
+    except ModuleNotFoundError:
+        missing_list = "、".join(missing_fonts)
+        print(f"缺少字体文件：{missing_list}；如需自动下载，请先安装 gdown。")
+        return
+
     for filename, file_id in FONT_URLS.items():
         filepath = os.path.join(font_dir, filename)
         if not os.path.exists(filepath):
