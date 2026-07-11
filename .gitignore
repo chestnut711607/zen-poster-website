@@ -5,9 +5,3 @@ __pycache__/
 *.otf
 *.ttf
 *.psd
-.DS_Store
-app.db
-uploads/
-next-frontend/node_modules/
-next-frontend/.next/
-.cursor/
