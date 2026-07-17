@@ -1,5 +1,5 @@
 import streamlit as st
-from database import init_db, verify_user, register_user
+from database import get_login_lock_message, init_db, register_user, verify_user
 
 # 三种业务身份可由用户自助注册；管理员身份只由管理员后台分配。
 ROLES = {
@@ -99,7 +99,7 @@ def render_login_page():
             else:
                 user = verify_user(username, password)
                 if not user:
-                    st.error("用户名或密码错误")
+                    st.error(get_login_lock_message(username) or "用户名或密码错误")
                 else:
                     roles = [role for role in user["roles"].split(",") if role]
                     _complete_auth(username, roles)

@@ -18,14 +18,14 @@ def render_admin_login_page():
         submitted = st.form_submit_button("登录", type="primary", use_container_width=True)
 
     if submitted:
-        from database import verify_user, user_has_role
+        from database import get_login_lock_message, user_has_role, verify_user
         user = verify_user(username, password)
         if user and user_has_role(username, "admin"):
             st.session_state.admin_logged_in = True
             st.session_state.admin_username = username
             st.rerun()
         else:
-            st.error("账号或密码错误，或无管理员权限")
+            st.error(get_login_lock_message(username) or "账号或密码错误，或无管理员权限")
 
 def render_admin_page(username: str):
     st.title("🔧 管理员后台")

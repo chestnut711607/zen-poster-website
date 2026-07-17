@@ -37,3 +37,19 @@ PATH=/Users/yihanliu/.cache/codex-runtimes/codex-primary-runtime/dependencies/no
 
 The Streamlit app remains available for the original login, role management,
 upload review, and full production workflow while the Next.js UI is completed.
+
+## Initial administrator
+
+The app no longer creates a hard-coded `admin/admin888` account. To bootstrap
+the first administrator, set these environment variables before the first app
+startup:
+
+```bash
+export POSTER_INITIAL_ADMIN_USERNAME="admin"
+export POSTER_INITIAL_ADMIN_PASSWORD="change-this-password"
+export POSTER_INITIAL_ADMIN_EMAIL="admin@example.com"
+```
+
+If the username already exists, startup only ensures that account has the
+`admin` role. Passwords are stored with bcrypt. Existing SHA256 password hashes
+are upgraded automatically after a successful login.

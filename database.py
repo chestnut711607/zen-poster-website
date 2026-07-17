@@ -1,9 +1,20 @@
 import sqlite3
 import hashlib
+import hmac
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+
+try:
+    import bcrypt
+except ImportError:  # pragma: no cover - production dependency is declared in requirements.txt
+    bcrypt = None
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.db")
+LOGIN_FAILURE_LIMIT = 5
+LOGIN_LOCKOUT_MINUTES = 15
+INITIAL_ADMIN_USERNAME_ENV = "POSTER_INITIAL_ADMIN_USERNAME"
+INITIAL_ADMIN_PASSWORD_ENV = "POSTER_INITIAL_ADMIN_PASSWORD"
+INITIAL_ADMIN_EMAIL_ENV = "POSTER_INITIAL_ADMIN_EMAIL"
 
 
 # =========================================================
@@ -12,6 +23,7 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.db")
 def init_db():
     """创建所有数据表（如果不存在）"""
     conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
     c = conn.cursor()
 
     # 用户表
@@ -22,9 +34,13 @@ def init_db():
             password_hash TEXT NOT NULL,
             email TEXT,
             roles TEXT NOT NULL DEFAULT 'user',
+            failed_login_count INTEGER NOT NULL DEFAULT 0,
+            locked_until TEXT,
             created_at TEXT NOT NULL
         )
     """)
+    _ensure_column(c, "users", "failed_login_count", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(c, "users", "locked_until", "TEXT")
 
     c.execute("""
         CREATE TABLE IF NOT EXISTS template_files (
@@ -81,17 +97,8 @@ def init_db():
         )
     """)
     
-    conn.commit()   
-    # 创建默认管理员账号（如果不存在）
-    existing = c.execute(
-        "SELECT id FROM users WHERE username = 'admin'"
-    ).fetchone()
-    if not existing:
-        c.execute(
-            "INSERT INTO users (username, password_hash, roles, created_at) VALUES (?, ?, ?, ?)",
-            ("admin", _hash_password("admin888"), "admin,user", datetime.now().isoformat())
-        )
-
+    conn.commit()
+    _create_initial_admin_from_env(conn)
     conn.commit()
     conn.close()
 
@@ -99,14 +106,99 @@ def init_db():
 # =========================================================
 # 工具函数
 # =========================================================
+def _ensure_column(cursor: sqlite3.Cursor, table: str, column: str, definition: str) -> None:
+    columns = {row[1] for row in cursor.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def _hash_password(password: str) -> str:
+    if bcrypt is None:
+        raise RuntimeError("bcrypt is required for password hashing. Install dependencies from requirements.txt.")
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _legacy_sha256_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def _password_matches(password: str, stored_hash: str) -> bool:
+    if stored_hash.startswith("$2a$") or stored_hash.startswith("$2b$") or stored_hash.startswith("$2y$"):
+        if bcrypt is None:
+            raise RuntimeError("bcrypt is required for password verification. Install dependencies from requirements.txt.")
+        return bcrypt.checkpw(password.encode("utf-8"), stored_hash.encode("utf-8"))
+    return hmac.compare_digest(stored_hash, _legacy_sha256_password(password))
+
+
+def _needs_password_rehash(stored_hash: str) -> bool:
+    return not (stored_hash.startswith("$2a$") or stored_hash.startswith("$2b$") or stored_hash.startswith("$2y$"))
+
+
+def _create_initial_admin_from_env(conn: sqlite3.Connection) -> None:
+    username = os.getenv(INITIAL_ADMIN_USERNAME_ENV, "").strip()
+    password = os.getenv(INITIAL_ADMIN_PASSWORD_ENV, "")
+    email = os.getenv(INITIAL_ADMIN_EMAIL_ENV, "").strip()
+    if not username and not password:
+        return
+    if not username or not password:
+        raise RuntimeError(
+            f"{INITIAL_ADMIN_USERNAME_ENV} and {INITIAL_ADMIN_PASSWORD_ENV} must be set together."
+        )
+
+    existing = conn.execute("SELECT id, roles FROM users WHERE username = ?", (username,)).fetchone()
+    if existing:
+        roles = _normalize_roles(set(existing["roles"].split(",")) | {"admin", "user"})
+        conn.execute("UPDATE users SET roles = ? WHERE username = ?", (",".join(roles), username))
+        return
+
+    conn.execute(
+        """
+        INSERT INTO users (username, password_hash, email, roles, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (username, _hash_password(password), email, "user,admin", datetime.now().isoformat()),
+    )
 
 
 def _get_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _is_login_locked(user: dict | sqlite3.Row) -> bool:
+    locked_until = _parse_datetime(user["locked_until"])
+    return bool(locked_until and locked_until > datetime.now())
+
+
+def _record_failed_login(conn: sqlite3.Connection, row: sqlite3.Row) -> None:
+    failed_count = int(row["failed_login_count"] or 0) + 1
+    locked_until = None
+    if failed_count >= LOGIN_FAILURE_LIMIT:
+        locked_until = (datetime.now() + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)).isoformat()
+    conn.execute(
+        "UPDATE users SET failed_login_count = ?, locked_until = ? WHERE username = ?",
+        (failed_count, locked_until, row["username"]),
+    )
+
+
+def _record_successful_login(conn: sqlite3.Connection, row: sqlite3.Row, password: str) -> None:
+    updates = ["failed_login_count = 0", "locked_until = NULL"]
+    params: list[str] = []
+    if _needs_password_rehash(row["password_hash"]):
+        updates.append("password_hash = ?")
+        params.append(_hash_password(password))
+    params.append(row["username"])
+    conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE username = ?", params)
 
 
 # =========================================================
@@ -135,12 +227,48 @@ def verify_user(username: str, password: str) -> dict | None:
     """验证用户名和密码，返回用户信息字典或 None"""
     conn = _get_conn()
     row = conn.execute(
-        "SELECT * FROM users WHERE username = ? AND password_hash = ?",
-        (username, _hash_password(password))
+        "SELECT * FROM users WHERE username = ?",
+        (username,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return None
+
+    if _is_login_locked(row):
+        conn.close()
+        return None
+
+    if not _password_matches(password, row["password_hash"]):
+        _record_failed_login(conn, row)
+        conn.commit()
+        conn.close()
+        return None
+
+    _record_successful_login(conn, row, password)
+    conn.commit()
+    row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_login_lock_message(username: str) -> str | None:
+    """返回账号锁定提示；未锁定时返回 None。"""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT failed_login_count, locked_until FROM users WHERE username = ?",
+        (username,)
     ).fetchone()
     conn.close()
-    if row:
-        return dict(row)
+    if not row:
+        return None
+    locked_until = _parse_datetime(row["locked_until"])
+    if locked_until and locked_until > datetime.now():
+        minutes = max(1, int((locked_until - datetime.now()).total_seconds() // 60) + 1)
+        return f"登录失败次数过多，请约 {minutes} 分钟后再试"
+    failed_count = int(row["failed_login_count"] or 0)
+    if failed_count > 0:
+        remaining = max(0, LOGIN_FAILURE_LIMIT - failed_count)
+        return f"用户名或密码错误，剩余 {remaining} 次尝试"
     return None
 
 
