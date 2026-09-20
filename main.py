@@ -1,10 +1,13 @@
-import base64
 import io
+import base64
 import logging
 import os
+import hashlib
 
 import streamlit as st
 from PIL import Image
+from image_editor import poster_editor
+from poster import background_image
 
 from download_fonts import download_fonts
 download_fonts()
@@ -42,62 +45,79 @@ if 'sub_step' not in st.session_state:
 if 'selected_template_type' not in st.session_state:
     st.session_state.selected_template_type = None
 
-GALLERY_MODAL_PAGE_SIZE = 15
-
-
 @st.dialog("📚 选择背景图片", width="large")
 def gallery_modal():
     if st.session_state.get('user_bg') is not None:
         return
-    st.markdown("点击图片下方的 **✏️ 选择** 按钮即可应用并关闭窗口。")
     gallery_files = get_gallery_file_list(ASSETS_BG_DIR)
     if not gallery_files:
         st.warning("图库暂时为空。\n请将图片放入 `assets/backgrounds` 文件夹。")
         return
-    n = len(gallery_files)
-    n_pages = max(1, (n + GALLERY_MODAL_PAGE_SIZE - 1) // GALLERY_MODAL_PAGE_SIZE)
-    page_labels = [
-        f"{i * GALLERY_MODAL_PAGE_SIZE + 1}–{min((i + 1) * GALLERY_MODAL_PAGE_SIZE, n)} / 共{n}张"
-        for i in range(n_pages)
-    ]
-    page = st.selectbox(
-        "分页",
-        range(n_pages),
-        format_func=lambda i: page_labels[i],
-        label_visibility="collapsed",
-        key="gallery_modal_page",
-    )
-    offset = int(page) * GALLERY_MODAL_PAGE_SIZE
-    page_files = gallery_files[offset : offset + GALLERY_MODAL_PAGE_SIZE]
 
-    cols = st.columns(5)
-    for j, filename in enumerate(page_files):
-        file_path = os.path.join(ASSETS_BG_DIR, filename)
-        with cols[j % 5]:
-            img = load_thumbnail_image(file_path, max_width=280)
-            if img:
-                st.image(img, use_container_width=True, caption=None)
-                if st.button("选择", key=f"modal_{offset + j}_{filename}", use_container_width=True, type="primary"):
-                    st.session_state.user_bg = file_path
-                    st.session_state.sub_step = 'choose_template'
-                    st.rerun()
-            else:
-                st.error("加载失败")
+    st.html("""
+    <style>
+    [role="dialog"]:has(.st-key-gallery_scroll) {
+        position: fixed;
+        top: 3dvh;
+        left: 2vw;
+        width: 96vw;
+        max-width: 96vw;
+        height: 94dvh;
+        max-height: 94dvh;
+        margin: 0;
+        overflow: hidden;
+    }
+    [data-testid="stLayoutWrapper"]:has(> .st-key-gallery_scroll) {
+        height: auto !important;
+        min-height: 0;
+        overflow: hidden;
+    }
+    .st-key-gallery_scroll {
+        height: calc(94dvh - 140px) !important;
+        max-height: calc(94dvh - 140px) !important;
+        flex: 0 0 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+        padding: 24px 8px 8px 4px;
+        -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px);
+        mask-image: linear-gradient(to bottom, transparent, #000 24px);
+    }
+    </style>
+    """)
+    with st.container(border=False, key="gallery_scroll"):
+        cols = st.columns(5)
+        for j, filename in enumerate(gallery_files):
+            file_path = os.path.join(ASSETS_BG_DIR, filename)
+            with cols[j % 5]:
+                img = load_thumbnail_image(file_path, max_width=280)
+                if img:
+                    preview_buffer = io.BytesIO()
+                    img.save(preview_buffer, format="PNG")
+                    preview_b64 = base64.b64encode(preview_buffer.getvalue()).decode("ascii")
+                    st.markdown(f"""
+                    <style>
+                    .st-key-template_card_gallery_{j} button {{
+                        background: url("data:image/png;base64,{preview_b64}") center / contain no-repeat;
+                        width: 100%;
+                        height: auto;
+                        aspect-ratio: {img.width} / {img.height};
+                    }}
+                    </style>
+                    """, unsafe_allow_html=True)
+                    with st.container(key=f"template_card_gallery_{j}"):
+                        selected = st.button("选择图片", key=f"modal_{j}_{filename}", use_container_width=True)
+                    if selected:
+                        st.session_state.user_bg = file_path
+                        st.session_state.sub_step = 'choose_template'
+                        st.rerun()
+                else:
+                    st.error("加载失败")
 
 # =========================================================
 # 【逻辑函数】
 # =========================================================
-def _sidebar_confirm_row(unique_key: str) -> None:
-    """每条文案下：点此重跑脚本，右侧海报用当前输入框内容重绘（点按钮会先失焦，内容已写入）。"""
-    if st.button(
-        "确认",
-        key=f"{unique_key}__ok",
-        use_container_width=True,
-        type="secondary",
-    ):
-        st.rerun()
-
-
 def fix_title_text(key):
     current_text = st.session_state.get(key, "")
     if not current_text:
@@ -179,8 +199,7 @@ def _inject_progress_nav_css(current_num: int, step: int) -> None:
     """为主区唯一四列进度条的按钮着色：绿=已过、蓝=当前、灰=未到。"""
     # 仅匹配「恰好 4 列」的横条；类型选择页每行最多 3 列，避免误伤「选择类型」primary 红按钮（勿改回 4 列类型行）
     hbar = (
-        'section[data-testid="stMain"] '
-        'div[data-testid="stHorizontalBlock"]:has(> :nth-child(4):last-child)'
+        '.st-key-progress_nav div[data-testid="stHorizontalBlock"]'
     )
     parts: list[str] = []
     for i in range(4):
@@ -239,44 +258,140 @@ def render_progress_nav(current_sub_step, step):
     labels = ["① 选择类型", "② 选背景图", "③ 选择模版", "④ 编辑下载"]
 
     subtag = f"{step}_{current_sub_step if step == 1 else 'edit'}"
-    c1, c2, c3, c4 = st.columns(4)
-    for i, (col, label) in enumerate(zip((c1, c2, c3, c4), labels)):
-        num = i + 1
-        with col:
-            if step == 2:
-                clickable = num < 4
-                is_current = num == 4
-            else:
-                clickable = num < current_num
-                is_current = num == current_num
-            if is_current:
-                st.button(
-                    f"▶ {label}",
-                    key=f"pgnav_cur_{num}_{subtag}",
-                    use_container_width=True,
-                    type="primary",
-                    disabled=True,
-                )
-            elif clickable:
-                if st.button(
-                    f"✓ {label}",
-                    key=f"pgnav_go_{num}_{subtag}",
-                    use_container_width=True,
-                    type="secondary",
-                ):
-                    _apply_progress_nav_click(num)
-            else:
-                st.button(
-                    f"○ {label}",
-                    key=f"pgnav_dis_{num}_{subtag}",
-                    use_container_width=True,
-                    disabled=True,
-                )
+    with st.container(key="progress_nav"):
+        c1, c2, c3, c4 = st.columns(4)
+        for i, (col, label) in enumerate(zip((c1, c2, c3, c4), labels)):
+            num = i + 1
+            with col:
+                if step == 2:
+                    clickable = num < 4
+                    is_current = num == 4
+                else:
+                    clickable = num < current_num
+                    is_current = num == current_num
+                if is_current:
+                    st.button(
+                        f"▶ {label}",
+                        key=f"pgnav_cur_{num}_{subtag}",
+                        use_container_width=True,
+                        type="primary",
+                        disabled=True,
+                    )
+                elif clickable:
+                    if st.button(
+                        f"✓ {label}",
+                        key=f"pgnav_go_{num}_{subtag}",
+                        use_container_width=True,
+                        type="secondary",
+                    ):
+                        _apply_progress_nav_click(num)
+                else:
+                    st.button(
+                        f"○ {label}",
+                        key=f"pgnav_dis_{num}_{subtag}",
+                        use_container_width=True,
+                        disabled=True,
+                    )
 
 # =========================================================
 # --- 【主程序界面 Step 1】 ---
 # =========================================================
+# Keep preview styles mounted during reruns and navigation while old cards fade out.
+st.markdown("""
+<style>
+        :is(div[class*="st-key-template_card_"], div[class*="st-key-type_preview_"]) button {
+            position: relative;
+            display: flex;
+            width: 100%;
+            height: auto;
+            padding: 0;
+            overflow: hidden;
+            border: 0;
+            border-radius: 10px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            cursor: pointer;
+        }
+        :is(div[class*="st-key-template_card_"], div[class*="st-key-type_preview_"]) button::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, .42);
+            opacity: 0;
+            transition: opacity 180ms ease;
+        }
+        :is(div[class*="st-key-template_card_"], div[class*="st-key-type_preview_"]) button p {
+            position: relative;
+            margin: 0;
+            padding: 12px 22px;
+            border-radius: 8px;
+            background: white;
+            color: #202624;
+            font-weight: 600;
+            opacity: 0;
+            transform: translateY(6px);
+            transition: opacity 180ms ease, transform 180ms ease;
+        }
+        :is(div[class*="st-key-template_card_"], div[class*="st-key-type_preview_"]) button:hover::before,
+        :is(div[class*="st-key-template_card_"], div[class*="st-key-type_preview_"]) button:focus-visible::before,
+        :is(div[class*="st-key-template_card_"], div[class*="st-key-type_preview_"]) button:hover p,
+        :is(div[class*="st-key-template_card_"], div[class*="st-key-type_preview_"]) button:focus-visible p {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        :is(div[class*="st-key-template_card_"], div[class*="st-key-type_preview_"]) button:focus-visible {
+            outline: 3px solid #277957;
+            outline-offset: 4px;
+        }
+        @media (hover: none) {
+            :is(div[class*="st-key-template_card_"], div[class*="st-key-type_preview_"]) button p { opacity: 1; transform: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            :is(div[class*="st-key-template_card_"], div[class*="st-key-type_preview_"]) button::before,
+            :is(div[class*="st-key-template_card_"], div[class*="st-key-type_preview_"]) button p { transition: none; transform: none; }
+        }
+        div[class*="st-key-type_preview_"] { position: relative; }
+        div[class*="st-key-type_preview_"] [data-testid="stElementContainer"]:has(> [data-testid="stButton"]) {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+        }
+        div[class*="st-key-type_preview_"] [data-testid="stButton"],
+        div[class*="st-key-type_preview_"] button {
+            width: 100%;
+            height: 100%;
+        }
+        div[class*="st-key-type_preview_"] button,
+        div[class*="st-key-type_preview_"] button:hover,
+        div[class*="st-key-type_preview_"] button:active {
+            background: transparent;
+        }
+</style>
+""", unsafe_allow_html=True)
+
 if st.session_state.step == 1:
+    if st.session_state.sub_step in ("choose_template_type", "choose_template"):
+        st.markdown("""
+        <style>
+        [data-testid="stLayoutWrapper"]:has(> .st-key-progress_nav) {
+            position: sticky;
+            top: 3.75rem;
+            z-index: 20;
+            padding: 12px 0;
+            background: var(--background-color, white);
+        }
+        [data-testid="stLayoutWrapper"]:has(> .st-key-progress_nav)::after {
+            content: "";
+            position: absolute;
+            left: 0; right: 0; top: 100%; height: 32px;
+            background: linear-gradient(to bottom, var(--background-color, white), transparent);
+            pointer-events: none;
+        }
+        </style>
+        """, unsafe_allow_html=True)
     # Step1 预览由 paint_poster_step1_preview_cached 内部按需加载字体，此处不再预加载整包字体
 
     # ======================================================
@@ -325,29 +440,28 @@ if st.session_state.step == 1:
                         </div>
                         """, unsafe_allow_html=True)
 
-                        # 缩略图：至多 4 个（认证证书型 4 张底图各一版；其它类型取前 4 个代表）
-                        n_thumb = min(4, len(rep_templates))
-                        thumb_cols = st.columns(n_thumb)
-                        for t_idx, tname in enumerate(rep_templates[:n_thumb]):
-                            tcfg = TEMPLATE_MASTER_CONFIG.get(tname)
-                            if tcfg:
-                                with thumb_cols[t_idx % n_thumb]:
-                                    p_data = {k: _template_field_default(tcfg, k, preview_defaults) for k in tcfg["include"]}
-                                    img_p = paint_poster_step1_preview(tname, p_data, None)
-                                    thumb = _poster_thumb_for_ui(img_p, max_side=260)
-                                    if thumb:
-                                        st.image(thumb, use_container_width=True, caption=tname)
+                        with st.container(key=f"type_preview_{col_idx}"):
+                            # 缩略图：至多 4 个（认证证书型 4 张底图各一版；其它类型取前 4 个代表）
+                            n_thumb = min(4, len(rep_templates))
+                            thumb_cols = st.columns(n_thumb)
+                            for t_idx, tname in enumerate(rep_templates[:n_thumb]):
+                                tcfg = TEMPLATE_MASTER_CONFIG.get(tname)
+                                if tcfg:
+                                    with thumb_cols[t_idx % n_thumb]:
+                                        p_data = {k: _template_field_default(tcfg, k, preview_defaults) for k in tcfg["include"]}
+                                        img_p = paint_poster_step1_preview(tname, p_data, None)
+                                        thumb = _poster_thumb_for_ui(img_p, max_side=260)
+                                        if thumb:
+                                            st.image(thumb, use_container_width=True, caption=tname)
 
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button(
-                            f"选择「{type_name}」→",
-                            key=f"type_{col_idx}",
-                            use_container_width=True,
-                            type="primary",
-                        ):
-                            st.session_state.selected_template_type = type_name
-                            st.session_state.sub_step = 'choose_bg'
-                            st.rerun()
+                            if st.button(
+                                f"选择「{type_name}」→",
+                                key=f"type_{col_idx}",
+                                use_container_width=True,
+                            ):
+                                st.session_state.selected_template_type = type_name
+                                st.session_state.sub_step = 'choose_bg'
+                                st.rerun()
 
                     else:
                         # ── 未上线：灰色占位卡片，不可点击 ──
@@ -392,28 +506,58 @@ if st.session_state.step == 1:
         st.markdown(f"已选类型：**{type_name}**　|　请为您的海报选择一张背景图片。")
         st.divider()
 
-        col_ops, col_empty = st.columns([1, 2])
+        col_ops, col_gallery = st.columns(2, gap="large")
         with col_ops:
-            st.subheader("1️⃣ 本地上传")
+            st.subheader("本地上传")
             st.markdown("""
             <style>
-                div[data-testid="stFileUploaderDropzone"] p {
-                    visibility: hidden !important; height: 0 !important; margin: 0 !important;
-                }
-                div[data-testid="stFileUploaderDropzone"] {
+                /* 上传区：隐藏原生英文文案与按钮，改为居中中文提示卡片。
+                   注意：部分 Streamlit 版本中 Dropzone 是 section 而非 div，选择器不写元素名 */
+                [data-testid="stFileUploaderDropzone"] {
                     display: flex; flex-direction: column;
-                    justify-content: center; align-items: center; min-height: 140px;
+                    justify-content: center; align-items: center; gap: 8px;
+                    height: 156px;
+                    border: 1.5px dashed #a9cfe2 !important;
+                    border-radius: 12px;
+                    background: #f7fbfd;
+                    cursor: pointer;
+                    transition: border-color .15s ease, background .15s ease;
                 }
-                .custom-upload-text {
-                    text-align: center; color: #555; font-size: 14px;
-                    line-height: 1.6; pointer-events: none; margin-top: -10px;
+                [data-testid="stFileUploaderDropzone"]:hover {
+                    border-color: #277957 !important;
+                    background: #f1f8f4;
                 }
-                .custom-upload-text strong { color: #FF4B4B; font-weight: 600; }
+                [data-testid="stFileUploaderDropzone"] > * {
+                    display: none !important;
+                }
+                [data-testid="stFileUploaderDropzone"]::after {
+                    content: "点击或拖拽图片至此\\A 限制 200MB · 支持 JPG / PNG";
+                    white-space: pre;
+                    text-align: center;
+                    color: #6b7a83;
+                    font-size: 13px;
+                    line-height: 1.7;
+                }
+                /* 图库按钮：与上传区同款虚线卡片，同高且上边缘对齐 */
+                div[class*="st-key-gallery_btn_wrap"] button {
+                    width: 100%;
+                    height: 156px;
+                    border: 1.5px dashed #a9cfe2;
+                    border-radius: 12px;
+                    background: #f7fbfd;
+                    color: #2f5d75;
+                    font-size: 15px;
+                    font-weight: 600;
+                    transition: border-color .15s ease, background .15s ease;
+                }
+                div[class*="st-key-gallery_btn_wrap"] button:hover {
+                    border-color: #277957;
+                    background: #f1f8f4;
+                    color: #277957;
+                }
             </style>
-            <div class="custom-upload-text">
-                <strong>点击或拖拽图片至此</strong><br>
-                限制 200MB • 支持 JPG, PNG 格式
-            </div>
+
+            从电脑选择或拖拽一张图片作为海报背景。
             """, unsafe_allow_html=True)
 
             bg_file = st.file_uploader(
@@ -428,24 +572,18 @@ if st.session_state.step == 1:
                 st.session_state.sub_step = 'choose_template'
                 st.rerun()
 
-            st.divider()
-            st.subheader("2️⃣ 精选图库")
+        with col_gallery:
+            st.subheader("精选图库")
             st.markdown("使用系统预设的高质量背景。")
             if st.session_state.user_bg is None:
-                if st.button("🖼️ 打开图库选择", use_container_width=True, type="secondary"):
-                    gallery_modal()
+                with st.container(key="gallery_btn_wrap"):
+                    if st.button("打开图库选择", use_container_width=True, type="secondary"):
+                        gallery_modal()
             else:
-                st.success("✅ 背景已选定，正在跳转...")
+                st.success("背景已选定，正在跳转...")
                 st.session_state.sub_step = 'choose_template'
                 st.rerun()
 
-        with col_empty:
-            st.markdown("""
-            <div style="display:flex; justify-content:center; align-items:center; height:300px;
-                color:#888; font-style:italic; text-align:center;">
-                <h3>👈 请在左侧操作<br>选择您喜欢的背景</h3>
-            </div>
-            """, unsafe_allow_html=True)
         st.stop()
 
     # ======================================================
@@ -463,27 +601,19 @@ if st.session_state.step == 1:
             available_template_names = list(TEMPLATE_MASTER_CONFIG.keys())
 
         with st.sidebar:
-            st.header("✅ 已选背景")
+            st.header("已选背景")
             try:
-                if isinstance(st.session_state.user_bg, str):
-                    st.image(st.session_state.user_bg, use_container_width=True)
-                else:
-                    st.image(st.session_state.user_bg, use_container_width=True)
+                st.image(background_image(st.session_state.user_bg), use_container_width=True)
             except:
                 st.error("图片加载失败")
 
             st.divider()
-            st.markdown(f"**类型：** {type_name or '全部'}")
-            st.divider()
 
-            if st.button("🔄 更换背景图片", use_container_width=True, type="secondary"):
+            if st.button("更换背景图片", use_container_width=True, type="secondary"):
                 st.session_state.user_bg = None
                 st.session_state.sub_step = 'choose_bg'
                 st.rerun()
 
-            st.markdown("👉 在右侧查看预览并选择模版")
-
-        st.markdown(f"### 「{type_name}」预览效果（基于当前背景）")
         preview_defaults = {k: v for k, v in DEFAULT_COPY_DATA.items() if v != ""}
         items = [(n, TEMPLATE_MASTER_CONFIG[n]) for n in available_template_names if n in TEMPLATE_MASTER_CONFIG]
 
@@ -497,8 +627,23 @@ if st.session_state.step == 1:
                     img_p = paint_poster_step1_preview(name, p_data, st.session_state.user_bg)
                     thumb = _poster_thumb_for_ui(img_p, max_side=420)
                     if thumb:
-                        st.image(thumb, use_container_width=True, caption=name)
-                        if st.button(f"编辑此模版", key=f"sel_{i}", use_container_width=True):
+                        preview_buffer = io.BytesIO()
+                        thumb.save(preview_buffer, format="PNG")
+                        preview_b64 = base64.b64encode(preview_buffer.getvalue()).decode("ascii")
+                        st.markdown(f"""
+                        <style>
+                        .st-key-template_card_{i} button {{
+                            background: url("data:image/png;base64,{preview_b64}") center / contain no-repeat;
+                            width: 100%;
+                            height: auto;
+                            aspect-ratio: {thumb.width} / {thumb.height};
+                        }}
+                        </style>
+                        """, unsafe_allow_html=True)
+                        with st.container(key=f"template_card_{i}"):
+                            selected = st.button("编辑此模版", key=f"sel_{i}", use_container_width=True)
+                        st.caption(name)
+                        if selected:
                             st.session_state.chosen_template = (name, cfg)
                             st.session_state.last_template_name = name
                             st.session_state.step = 2
@@ -516,6 +661,14 @@ elif st.session_state.step == 2:
         st.rerun()
 
     name, cfg = st.session_state.chosen_template
+    source = st.session_state.user_bg
+    source_id = source if isinstance(source, str) else hashlib.sha256(source.getvalue()).hexdigest()
+    editor_id = f'{name}:{source_id}'
+    if st.session_state.get('image_editor_id') != editor_id:
+        st.session_state.image_editor_id = editor_id
+        st.session_state.bg_transform = {'scale': 1, 'x': 0, 'y': 0}
+        st.session_state.image_editing = False
+        st.session_state.image_revision = st.session_state.get('image_revision', 0) + 1
     if st.session_state.last_template_name != name:
         st.session_state.last_template_name = name
 
@@ -523,14 +676,35 @@ elif st.session_state.step == 2:
 
     st.markdown("""
     <style>
-        /* 主区：整体下移 50px；顶底留白与步骤条、工具栏、分隔线形成统一节奏 */
-        .block-container { padding-top: calc(50px + 0.5rem) !important; padding-bottom: 0.75rem !important; max-width: 95% !important; }
+        .block-container { padding-top: 36px !important; padding-bottom: 12px !important; max-width: 95% !important; }
+        /* 第四步主区不滚动（仅桌面端）：锁死滚动容器 + 编辑器高度用「视口 − 固定元素」精确计算。
+           不用 flex 布局：iframe 外层有 Streamlit 的中间包裹层，flex 高度会在中间层塌陷，预览会被压成一条 */
+        @media (min-width: 769px) {
+            div[data-testid="stAppViewContainer"], section[data-testid="stMain"] {
+                overflow: hidden !important; height: 100dvh !important;
+            }
+        }
+        section[data-testid="stMain"] iframe[title^="image_editor.poster_image_editor"] {
+            height: max(300px, calc(100dvh - 196px)) !important;
+        }
         header, footer, .stApp > header { visibility: hidden !important; display: none !important; }
         .stApp { overflow: hidden !important; height: 100vh; }
         /* 勿在外层 section 设 overflow-y + 固定高度：会与 Streamlit 内部滚动区叠成双滚动条 */
         section[data-testid="stSidebar"] {
             overflow-x: hidden !important;
             border-right: 1px solid #ddd;
+            height: 100dvh;
+            flex-shrink: 0;
+        }
+        section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { height: 100%; overflow-y: auto; }
+        [data-testid="stSidebarCollapseButton"] { display: none; }
+        @media (max-width: 768px) {
+            [data-testid="stSidebarCollapseButton"] { display: block; }
+            header, .stApp > header { display: block !important; visibility: visible !important; }
+            .block-container { padding-top: 64px !important; }
+            section[data-testid="stMain"] iframe[title^="image_editor.poster_image_editor"] {
+                height: max(300px, calc(100dvh - 384px)) !important;
+            }
         }
         section[data-testid="stSidebar"] > div { padding-top: calc(50px + 0.35rem) !important; }
         section[data-testid="stSidebar"] [data-testid="stSidebarContent"]::-webkit-scrollbar { width: 4px; }
@@ -553,6 +727,31 @@ elif st.session_state.step == 2:
         }
         /* 分隔线：与上下区块各留约 12px 等效空隙 */
         hr { margin-top: 0.55rem !important; margin-bottom: 0.65rem !important; }
+        section[data-testid="stMain"] [data-testid="stElementContainer"]:has([data-testid="stDownloadButton"]) {
+            width: 100% !important;
+            display: flex;
+            justify-content: center;
+            position: sticky;
+            bottom: 24px;
+            z-index: 2;
+            padding: 6px 0;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), white 12px);
+        }
+        section[data-testid="stMain"] [data-testid="stDownloadButton"] button {
+            background: #277957;
+            border-color: #277957;
+            color: white;
+            font-weight: 600;
+            padding: 10px 24px;
+        }
+        section[data-testid="stMain"] [data-testid="stDownloadButton"] button:hover:not(:disabled) {
+            background: #1e6045;
+            border-color: #1e6045;
+            color: white;
+        }
+        section[data-testid="stMain"] [data-testid="stDownloadButton"] button:disabled {
+            opacity: 0.45;
+        }
         .preview-wrapper {
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             gap: 14px;
@@ -584,19 +783,20 @@ elif st.session_state.step == 2:
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown(f"#### ✍️ 编辑：**{name}** &nbsp;&nbsp;|&nbsp;&nbsp; 👁️ 预览")
-
-    st.divider()
-
     with st.sidebar:
-        st.subheader("🖼️ 素材上传")
+        st.subheader("修改图片大小及位置")
+        if st.button('编辑图片', use_container_width=True, disabled=st.session_state.image_editing):
+            st.session_state.image_editing = True
+            st.session_state.image_revision += 1
+            st.rerun()
+        st.subheader("素材上传")
         u_logo = st.file_uploader("Logo", type=["png", "jpg"], key="edit_logo")
         u_qr = None
         if "qr" in cfg.get("include", []):
             u_qr = st.file_uploader("二维码", type=["png", "jpg"], key="edit_qr")
         st.divider()
-        st.subheader("✍️ 文案修改")
-        st.caption("改完后点该字段下方的「确认」更新右侧预览。")
+        st.subheader("文案修改")
+        st.caption("修改后点击其他位置或按 Tab，右侧预览会自动更新。")
 
         user_input_data = {}
         label_map = {
@@ -660,7 +860,6 @@ elif st.session_state.step == 2:
                         on_change=fix_title_text,
                         args=(unique_key,),
                     )
-                    _sidebar_confirm_row(unique_key)
                     user_input_data[key] = val
                 elif (
                     "cont" in key
@@ -670,37 +869,30 @@ elif st.session_state.step == 2:
                     or key in ("cert_body", "cert_greeting", "cert_footer")
                 ):
                     val = st.text_area(label_name, value=default_val, height=50, key=unique_key)
-                    _sidebar_confirm_row(unique_key)
                     user_input_data[key] = val
                 else:
                     val = st.text_input(label_name, value=default_val, key=unique_key)
-                    _sidebar_confirm_row(unique_key)
                     user_input_data[key] = val
 
-    final_img = paint_poster(name, cfg, st.session_state.user_bg, u_logo, u_qr, user_input_data, font_cache, font_dir=FONT_DIR)
+    background = background_image(source)
+    overlay = paint_poster(name, cfg, None, u_logo, u_qr, user_input_data, font_cache,
+                           font_dir=FONT_DIR, transparent_background=True)
+    result = poster_editor(background, overlay, st.session_state.bg_transform,
+                           st.session_state.image_editing, st.session_state.image_revision,
+                           key='poster_editor')
+    if result and result.get('revision') == st.session_state.image_revision and st.session_state.image_editing:
+        st.session_state.bg_transform = {key: result[key] for key in ('scale', 'x', 'y')}
+        st.session_state.image_editing = False
+        st.session_state.image_revision += 1
+        st.rerun()
+    final_img = paint_poster(name, cfg, source, u_logo, u_qr, user_input_data, font_cache,
+                            font_dir=FONT_DIR, bg_transform=st.session_state.bg_transform)
 
     if final_img:
         buf = io.BytesIO()
         final_img.save(buf, format='PNG')
         img_bytes = buf.getvalue()
-        b64_data = base64.b64encode(img_bytes).decode('utf-8')
-
-        html_code = f"""
-        <div class="preview-wrapper">
-            <img src="data:image/png;base64,{b64_data}" class="poster-img" alt="Poster Preview">
-            <div class="bottom-controls">
-                <a href="data:image/png;base64,{b64_data}" download="{name}_final.png" style="text-decoration: none;">
-                    <button style="
-                        background-color: #28a745; color: white; border: none;
-                        padding: 10px 28px; border-radius: 22px; font-size: 15px;
-                        font-weight: 600; cursor: pointer; box-shadow: 0 3px 12px rgba(0,0,0,0.18);
-                        transition: transform 0.2s;">
-                        💾 下载高清原图
-                    </button>
-                </a>
-            </div>
-        </div>
-        """
-        st.markdown(html_code, unsafe_allow_html=True)
+        st.download_button('下载高清原图', img_bytes, file_name=f'{name}_final.png',
+                           mime='image/png', disabled=st.session_state.image_editing)
     else:
         st.info("正在生成预览...")

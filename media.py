@@ -3,14 +3,15 @@ import logging
 import os
 
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageOps
 
 logger = logging.getLogger(__name__)
 
 @st.cache_data(show_spinner=False, max_entries=256, ttl=3600)
 def _load_thumbnail_cached(file_path: str, max_width: int, mtime_key: float):
     try:
-        img = Image.open(file_path)
+        with Image.open(file_path) as source:
+            img = ImageOps.exif_transpose(source).convert("RGB")
         if img.width > max_width:
             img.thumbnail((max_width, max_width * 2))
         return img

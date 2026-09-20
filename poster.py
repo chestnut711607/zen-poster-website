@@ -1,8 +1,23 @@
 """海报渲染、字体缓存与 Step1 预览。"""
+import functools
 import logging
 import os
 
-import streamlit as st
+try:
+    import streamlit as st
+except ImportError:  # API 服务器等无 Streamlit 环境：用 lru_cache 兜底（语义近似，仅少 TTL）
+    class _StreamlitCacheShim:
+        @staticmethod
+        def cache_resource(func=None, **_kw):
+            deco = functools.lru_cache(maxsize=None)
+            return deco if func is None else deco(func)
+
+        @staticmethod
+        def cache_data(func=None, **kw):
+            deco = functools.lru_cache(maxsize=kw.get("max_entries", 128))
+            return deco if func is None else deco(func)
+
+    st = _StreamlitCacheShim()
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from config import (
@@ -266,18 +281,40 @@ def _template_field_default(cfg, key, fallback_dict):
     return fallback_dict.get(key, "")
 
 
-def paint_poster(name, cfg, up_bg, up_logo, up_qr, data, font_cache, font_dir: str | None = None):
+def background_image(source):
+    if hasattr(source, 'seek'):
+        source.seek(0)
+    return ImageOps.exif_transpose(Image.open(source)).convert('RGBA')
+
+
+def render_background(source, transform=None, size=(1080, 1920)):
+    img = background_image(source)
+    transform = transform or {}
+    zoom = max(0.2, min(5.0, float(transform.get('scale', 1))))
+    ratio = max(size[0] / img.width, size[1] / img.height) * zoom
+    width, height = img.width * ratio, img.height * ratio
+    x = (size[0] - width) / 2 + float(transform.get('x', 0))
+    y = (size[1] - height) / 2 + float(transform.get('y', 0))
+    # Inverse mapping avoids allocating a huge image when a photo is enlarged.
+    layer = img.transform(size, Image.Transform.AFFINE,
+                          (1 / ratio, 0, -x / ratio, 0, 1 / ratio, -y / ratio),
+                          resample=Image.Resampling.BICUBIC)
+    canvas = Image.new('RGBA', size, 'white')
+    canvas.alpha_composite(layer)
+    return canvas
+
+
+def paint_poster(name, cfg, up_bg, up_logo, up_qr, data, font_cache, font_dir: str | None = None,
+                 bg_transform=None, transparent_background=False):
     path = _poster_font_dir(font_dir)
     bg_rel = (cfg.get("bg_img") or "").strip()
     bg_file = os.path.join(path, bg_rel) if bg_rel else ""
     canvas_size = (1080, 1920)
-    if up_bg:
+    if transparent_background:
+        canvas = Image.new('RGBA', canvas_size, (0, 0, 0, 0))
+    elif up_bg:
         try:
-            if isinstance(up_bg, str):
-                user_bg_img = Image.open(up_bg).convert("RGBA")
-            else:
-                user_bg_img = Image.open(up_bg).convert("RGBA")
-            canvas = ImageOps.fit(user_bg_img, canvas_size)
+            canvas = render_background(up_bg, bg_transform, canvas_size)
         except Exception:
             canvas = Image.new("RGBA", canvas_size, (255, 255, 255, 255))
     else:
@@ -292,7 +329,9 @@ def paint_poster(name, cfg, up_bg, up_logo, up_qr, data, font_cache, font_dir: s
             decoration = Image.open(bg_file).convert("RGBA")
             if decoration.size != canvas_size:
                 decoration = decoration.resize(canvas_size, Image.Resampling.LANCZOS)
-            canvas.paste(decoration, (0, 0), decoration)
+            # 用 alpha_composite（source-over）而非 paste(遮罩)：后者在透明画布上会把
+            # 半透明蒙版的 alpha 再乘一次，导致编辑页 overlay 的白色渐变蒙版明显变淡发灰
+            canvas.alpha_composite(decoration)
         except Exception:
             logger.debug("装饰层加载失败: %s", bg_file, exc_info=True)
     draw = ImageDraw.Draw(canvas)
@@ -335,8 +374,10 @@ def paint_poster(name, cfg, up_bg, up_logo, up_qr, data, font_cache, font_dir: s
             target_w = int(float(l_img.size[0]) * ratio)
             l_img = l_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
             lx, ly = c["logo"]
-            if anchor == "mm": paste_x = lx - (target_w // 2)
-            elif anchor == "ra": paste_x = lx - target_w
+            # logo 可用模板级 logo_anchor 独立指定锚点（如 "mm" 居中），否则跟随全局 align
+            logo_anchor = cfg.get("logo_anchor", anchor)
+            if logo_anchor == "mm": paste_x = lx - (target_w // 2)
+            elif logo_anchor == "ra": paste_x = lx - target_w
             else: paste_x = lx
             canvas.paste(l_img, (paste_x, ly), l_img)
         except Exception: pass

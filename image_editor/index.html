@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8">
+<style>
+*{box-sizing:border-box}body{margin:0;font:14px system-ui;color:#202624;background:white}
+.toolbar{height:44px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:2px;position:relative;z-index:2;background:white}
+label{display:flex;align-items:center;gap:8px}input{width:130px;accent-color:#277957}output{width:44px}
+button{font:inherit;border:1px solid #ccd4d0;background:white;border-radius:5px;padding:8px 14px;cursor:pointer}
+#confirm{background:#277957;color:white;border-color:#277957}.actions{margin-left:auto;display:flex;gap:8px}
+.viewport{height:540px;overflow:auto;background:transparent;border:0;position:relative;overscroll-behavior:contain;
+    -webkit-mask-image:linear-gradient(to bottom,transparent,#000 48px,#000 calc(100% - 48px),transparent);
+    mask-image:linear-gradient(to bottom,transparent,#000 48px,#000 calc(100% - 48px),transparent)}
+.space{position:relative;min-width:100%;min-height:100%;display:flex;justify-content:center;align-items:center;padding:24px}
+.poster{position:relative;flex-shrink:0;background:white;box-shadow:0 3px 16px #0002;overflow:hidden;touch-action:none}
+canvas{width:100%;height:100%;display:block}.selection{position:absolute;border:2px solid #277957;pointer-events:none}
+.handle{position:absolute;width:16px;height:16px;background:white;border:2px solid #277957;pointer-events:auto;padding:0;border-radius:2px;touch-action:none}
+.nw{left:-2px;top:-2px;cursor:nwse-resize}.ne{right:-2px;top:-2px;cursor:nesw-resize}.sw{left:-2px;bottom:-2px;cursor:nesw-resize}.se{right:-2px;bottom:-2px;cursor:nwse-resize}
+@media(max-width:480px){.toolbar{height:96px}.actions{margin-left:0}input{width:100px}}
+</style>
+<div class="toolbar"><label>预览缩放 <input id="zoom" aria-label="预览缩放" type="range" min="30" max="200" value="100"><output id="amount">100%</output></label><div class="actions" id="actions"><button id="reset">恢复默认</button><button id="confirm">确认</button></div></div>
+<div class="viewport" id="viewport"><div class="space" id="space"><div class="poster" id="poster"><canvas id="canvas" width="1080" height="1920"></canvas><div class="selection" id="selection"><button aria-label="左上角缩放" class="handle nw" data-corner="nw"></button><button aria-label="右上角缩放" class="handle ne" data-corner="ne"></button><button aria-label="左下角缩放" class="handle sw" data-corner="sw"></button><button aria-label="右下角缩放" class="handle se" data-corner="se"></button></div></div></div></div>
+<script>
+const $=id=>document.getElementById(id),ctx=$('canvas').getContext('2d');
+let args={},state={scale:1,x:0,y:0},revision=null,bg=null,overlay=null,drag=null,editing=false,loadId=0;
+function send(type,extra={}){parent.postMessage({isStreamlitMessage:true,type,...extra},'*')}
+function bounds(){const ratio=Math.max(1080/args.image_width,1920/args.image_height)*state.scale,w=args.image_width*ratio,h=args.image_height*ratio;return {x:(1080-w)/2+state.x,y:(1920-h)/2+state.y,w,h}}
+function layout(){const height=Math.max(320,window.innerHeight-document.querySelector('.toolbar').offsetHeight-8);$('viewport').style.height=height+'px';const fade=48+16;const fit=Math.min(($('viewport').clientWidth-48)/1080,Math.max(160,height-2*fade)/1920);const s=Math.max(.08,fit)*Number($('zoom').value)/100;$('poster').style.width=1080*s+'px';$('poster').style.height=1920*s+'px';$('space').style.width=Math.max($('viewport').clientWidth,1080*s+48)+'px';$('amount').value=$('zoom').value+'%';draw()}
+function draw(){if(!bg||!overlay)return;const b=bounds();ctx.fillStyle='white';ctx.fillRect(0,0,1080,1920);ctx.drawImage(bg,b.x,b.y,b.w,b.h);ctx.drawImage(overlay,0,0,1080,1920);$('selection').hidden=!editing;$('actions').style.visibility=editing?'visible':'hidden';$('poster').style.cursor=editing?'move':'default';const s=$('poster').clientWidth/1080;const left=Math.max(0,b.x),top=Math.max(0,b.y),right=Math.min(1080,b.x+b.w),bottom=Math.min(1920,b.y+b.h);Object.assign($('selection').style,{left:left*s+'px',top:top*s+'px',width:Math.max(20,(right-left)*s)+'px',height:Math.max(20,(bottom-top)*s)+'px'})}
+function load(src){return new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=src})}
+window.addEventListener('message',async event=>{if(event.source!==parent||event.data.type!=='streamlit:render')return;const next=event.data.args;args=next;if(revision!==args.revision){state={...args.transform};editing=args.editing;revision=args.revision}const id=++loadId;const images=await Promise.all([load(args.background),load(args.overlay)]);if(id!==loadId)return;[bg,overlay]=images;layout();send('streamlit:setFrameHeight',{height:660})});
+window.addEventListener('resize',layout);
+let previewZoom=Number($('zoom').value),gestureStartZoom=null;
+function zoomPreview(value,clientX,clientY){
+    if(drag)return;
+    const viewport=$('viewport'),poster=$('poster'),before=poster.getBoundingClientRect();
+    if(!before.width||!before.height)return;
+    const x=(clientX-before.left)/before.width,y=(clientY-before.top)/before.height;
+    previewZoom=Math.max(Number($('zoom').min),Math.min(Number($('zoom').max),value));
+    $('zoom').value=String(Math.round(previewZoom));
+    layout();
+    const after=poster.getBoundingClientRect();
+    viewport.scrollLeft+=after.left+x*after.width-clientX;
+    viewport.scrollTop+=after.top+y*after.height-clientY;
+}
+$('zoom').addEventListener('input',()=>{
+    const viewport=$('viewport'),rect=viewport.getBoundingClientRect();
+    zoomPreview(Number($('zoom').value),
+        rect.left+viewport.clientWidth/2,rect.top+viewport.clientHeight/2);
+});
+// Trackpad pinch arrives as Ctrl+wheel in Chromium; plain wheel keeps scrolling.
+$('viewport').addEventListener('wheel',event=>{
+    if(!event.ctrlKey)return;
+    event.preventDefault();
+    if(gestureStartZoom!==null)return;
+    const unit=event.deltaMode===1?16:event.deltaMode===2?$('viewport').clientHeight:1;
+    zoomPreview(previewZoom*Math.exp(-event.deltaY*unit*.01),event.clientX,event.clientY);
+},{passive:false});
+// Safari exposes a cumulative gesture scale instead of Ctrl+wheel.
+$('viewport').addEventListener('gesturestart',event=>{
+    event.preventDefault();gestureStartZoom=Number($('zoom').value);
+},{passive:false});
+$('viewport').addEventListener('gesturechange',event=>{
+    event.preventDefault();
+    if(gestureStartZoom!==null)zoomPreview(gestureStartZoom*event.scale,event.clientX,event.clientY);
+},{passive:false});
+$('viewport').addEventListener('gestureend',event=>{
+    event.preventDefault();gestureStartZoom=null;
+},{passive:false});
+$('poster').onpointerdown=e=>{if(!editing)return;e.preventDefault();const r=$('poster').getBoundingClientRect(),b=bounds();drag={id:e.pointerId,startX:e.clientX,startY:e.clientY,initial:{...state},corner:e.target.dataset.corner,ratio:r.width/1080,cx:b.x+b.w/2,cy:b.y+b.h/2,bounds:b};$('poster').setPointerCapture(e.pointerId)};
+$('poster').onpointermove=e=>{if(!drag||drag.id!==e.pointerId)return;const dx=(e.clientX-drag.startX)/drag.ratio,dy=(e.clientY-drag.startY)/drag.ratio;if(drag.corner){const sx=drag.corner.includes('e')?1:-1,sy=drag.corner.includes('s')?1:-1;const change=(sx*dx*drag.bounds.w+sy*dy*drag.bounds.h)/(drag.bounds.w**2+drag.bounds.h**2)*2;state.scale=Math.max(.2,Math.min(5,drag.initial.scale*(1+change)))}else{state.x=Math.max(-1080,Math.min(1080,drag.initial.x+dx));state.y=Math.max(-1920,Math.min(1920,drag.initial.y+dy))}draw()};
+function end(){drag=null} $('poster').onpointerup=end;$('poster').onpointercancel=end;
+$('reset').onclick=()=>{state={scale:1,x:0,y:0};draw()};
+$('confirm').onclick=()=>{editing=false;draw();send('streamlit:setComponentValue',{value:{...state,revision},dataType:'json'})};
+send('streamlit:componentReady',{apiVersion:1});send('streamlit:setFrameHeight',{height:660});
+</script></html>

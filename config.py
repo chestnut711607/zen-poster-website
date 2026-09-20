@@ -258,7 +258,7 @@ TEMPLATE_MASTER_CONFIG = {
     # 「流程/Schedule」左上；7 步为两列网格：左序号+时间同 x，右中英名称同 x，上下行等距
     # ================================================================
     "信息图表型C1": {
-        "bg_img": "bg_info1.png", "color": "#1A1A1A", "align": "la",
+        "bg_img": "bg_info1.png", "color": "#1A1A1A", "align": "la", "logo_anchor": "mm",
         "include": [
             "logo",
             "sched_label_cn", "sched_label_eg",
@@ -283,7 +283,7 @@ TEMPLATE_MASTER_CONFIG = {
             "sched_num_5":     (380, 1011),  "sched_time_5":   (380, 1128),  "sched_name_cn_5": (600, 1044),  "sched_name_eg_5": (600, 1120),
             "sched_num_6":     (380, 1213), "sched_time_6":    (380, 1330), "sched_name_cn_6": (600, 1246), "sched_name_eg_6": (600, 1322),
             "sched_num_7":     (380, 1415), "sched_time_7":    (380, 1532), "sched_name_cn_7": (600, 1448), "sched_name_eg_7": (600, 1524),
-            "logo": (500, 1810),
+            "logo": (540, 1810),
         },
     },
 
@@ -292,7 +292,7 @@ TEMPLATE_MASTER_CONFIG = {
     # 参照半透明卡片：列表偏左；「流程」竖排 +「Schedule」靠右、压在列表区块上方；两列网格顶对齐
     # ================================================================
     "信息图表型C2": {
-        "bg_img": "bg_info2.png", "color": "#FFFFFF", "align": "la",
+        "bg_img": "bg_info2.png", "color": "#FFFFFF", "align": "la", "logo_anchor": "mm",
         "include": [
             "logo",
             "sched_label_cn", "sched_label_eg",
@@ -315,7 +315,7 @@ TEMPLATE_MASTER_CONFIG = {
             "sched_num_5":     (328, 1172), "sched_time_5":    (218, 1290), "sched_name_cn_5": (448, 1204), "sched_name_eg_5": (448, 1284),
             "sched_num_6":     (328, 1349), "sched_time_6":    (218, 1467), "sched_name_cn_6": (448, 1381), "sched_name_eg_6": (448, 1461),
             "sched_num_7":     (328, 1526), "sched_time_7":    (218, 1644), "sched_name_cn_7": (448, 1558), "sched_name_eg_7": (448, 1638),
-            "logo": (500, 48),
+            "logo": (540, 48),
         },
     },
 
@@ -324,7 +324,7 @@ TEMPLATE_MASTER_CONFIG = {
     # 与 C2 坐标一致，仅底图与字色不同（bg_info3 + 深色字）
     # ================================================================
     "信息图表型C3": {
-        "bg_img": "bg_info3.png", "color": "#1A1A1A", "align": "la",
+        "bg_img": "bg_info3.png", "color": "#1A1A1A", "align": "la", "logo_anchor": "mm",
         "include": [
             "logo",
             "sched_label_cn", "sched_label_eg",
@@ -346,7 +346,7 @@ TEMPLATE_MASTER_CONFIG = {
             "sched_num_5":     (328, 1172), "sched_time_5":    (218, 1290), "sched_name_cn_5": (448, 1204), "sched_name_eg_5": (448, 1284),
             "sched_num_6":     (328, 1349), "sched_time_6":    (218, 1467), "sched_name_cn_6": (448, 1381), "sched_name_eg_6": (448, 1461),
             "sched_num_7":     (328, 1526), "sched_time_7":    (218, 1644), "sched_name_cn_7": (448, 1558), "sched_name_eg_7": (448, 1638),
-            "logo": (500, 48),
+            "logo": (540, 48),
         },
     },
 
@@ -354,7 +354,7 @@ TEMPLATE_MASTER_CONFIG = {
     # 信息图表型C4：多日课程 · 浅底左标题双行版（每天两行：每行「时间 + 内容」）
     # ================================================================
     "信息图表型C4": {
-        "bg_img": "bg_info4.png", "color": "#1A1A1A", "align": "la",
+        "bg_img": "bg_info4.png", "color": "#1A1A1A", "align": "la", "logo_anchor": "mm",
         "include": [
             "course_title_cn", "course_title_eg",
             "day_date_1", "day_week_1", "day_time_1", "day_cont_1", "day_time2_1", "day_cont2_1",
@@ -386,7 +386,7 @@ TEMPLATE_MASTER_CONFIG = {
             "course_qr_tip_cn": (81, 1400),
             "course_qr_tip_eg": (81, 1640),
             "qr":   (80, 1502),
-            "logo": (500, 1810),
+            "logo": (540, 1810),
         },
     },
 

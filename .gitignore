@@ -1,7 +1,9 @@
 .venv/
 __pycache__/
 .pytest_cache/
-.venv/
 *.otf
 *.ttf
 *.psd
+web/node_modules/
+web/dist/
+.DS_Store
