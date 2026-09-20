@@ -64,15 +64,15 @@ export default function App() {
   const lastNudgeAt = useRef(0);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
-  const syncUndoFlags = () => {
+  const syncUndoFlags = useCallback(() => {
     setCanUndo(undoStack.current.length > 0);
     setCanRedo(redoStack.current.length > 0);
-  };
-  const pushUndo = (snapshot: Transform) => {
+  }, []);
+  const pushUndo = useCallback((snapshot: Transform) => {
     undoStack.current = [...undoStack.current.slice(-49), snapshot];
     redoStack.current = [];
     syncUndoFlags();
-  };
+  }, [syncUndoFlags]);
   /** 拖拽过程中的实时预览：不入历史 */
   const previewTransform = useCallback((t: Transform) => setTransform(t), []);
   /** 离散操作（恢复默认等）：入历史 */
@@ -81,7 +81,7 @@ export default function App() {
     if (t.scale === cur.scale && t.x === cur.x && t.y === cur.y) return;
     pushUndo(cur);
     setTransform(t);
-  }, []);
+  }, [pushUndo]);
   const beginTransformGesture = useCallback(() => {
     gestureSnapshot.current = transformRef.current;
   }, []);
@@ -90,14 +90,14 @@ export default function App() {
     gestureSnapshot.current = null;
     const cur = transformRef.current;
     if (snap && (snap.scale !== cur.scale || snap.x !== cur.x || snap.y !== cur.y)) pushUndo(snap);
-  }, []);
+  }, [pushUndo]);
   /** 方向键微调：800ms 内的连续按键合并为一步历史 */
   const nudgeTransform = useCallback((t: Transform) => {
     const now = Date.now();
     if (now - lastNudgeAt.current > 800) pushUndo(transformRef.current);
     lastNudgeAt.current = now;
     setTransform(t);
-  }, []);
+  }, [pushUndo]);
   const undoTransform = useCallback(() => {
     const stack = undoStack.current;
     if (!stack.length) return;
@@ -105,7 +105,7 @@ export default function App() {
     undoStack.current = stack.slice(0, -1);
     setTransform(stack[stack.length - 1]);
     syncUndoFlags();
-  }, []);
+  }, [syncUndoFlags]);
   const redoTransform = useCallback(() => {
     const stack = redoStack.current;
     if (!stack.length) return;
@@ -113,7 +113,7 @@ export default function App() {
     redoStack.current = stack.slice(0, -1);
     setTransform(stack[stack.length - 1]);
     syncUndoFlags();
-  }, []);
+  }, [syncUndoFlags]);
   const [logo, setLogo] = useState<{ id: string; url: string } | null>(null);
   const [qr, setQr] = useState<{ id: string; url: string } | null>(null);
   const [titleMsg, setTitleMsg] = useState<string | null>(null);
@@ -154,7 +154,7 @@ export default function App() {
     redoStack.current = [];
     syncUndoFlags();
     setEditing(false);
-  }, [activeTemplate, defaultCopy]);
+  }, [activeTemplate, defaultCopy, syncUndoFlags]);
 
   const editableFields = useMemo(
     () =>

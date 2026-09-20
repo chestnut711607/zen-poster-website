@@ -1,6 +1,6 @@
 // 海报画布：背景 + 文字层实时合成预览；编辑模式下可拖拽/四角缩放背景图。
 // 移植自 Streamlit 版 image_editor/index.html，交互与参数（bg_transform）完全一致。
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Transform } from "@/api";
 
 const CANVAS_W = 1080;
@@ -67,9 +67,12 @@ export default function PosterCanvas({
   const overlayImgRef = useRef<HTMLImageElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const transformRef = useRef(transform);
-  transformRef.current = transform;
   const editingRef = useRef(editing);
-  editingRef.current = editing;
+  useLayoutEffect(() => {
+    transformRef.current = transform;
+    editingRef.current = editing;
+  }, [transform, editing]);
+  const [bgSize, setBgSize] = useState({ width: 0, height: 0 });
 
   const [zoom, setZoom] = useState(100);
   const [scale, setScale] = useState(0.2); // 海报 css 像素 / 画布像素
@@ -80,12 +83,12 @@ export default function PosterCanvas({
     let cancelled = false;
     if (!bgUrl) {
       bgImgRef.current = null;
-      setReady((n) => n + 1);
       return;
     }
     loadImage(bgUrl).then((img) => {
       if (!cancelled) {
         bgImgRef.current = img;
+        setBgSize({ width: img.naturalWidth, height: img.naturalHeight });
         setReady((n) => n + 1);
       }
     }).catch(() => {});
@@ -98,7 +101,6 @@ export default function PosterCanvas({
     let cancelled = false;
     if (!overlayUrl) {
       overlayImgRef.current = null;
-      setReady((n) => n + 1);
       return;
     }
     loadImage(overlayUrl).then((img) => {
@@ -170,7 +172,7 @@ export default function PosterCanvas({
     if (overlayImgRef.current) {
       ctx.drawImage(overlayImgRef.current, 0, 0, CANVAS_W, CANVAS_H);
     }
-  }, [ready, transform, scale, bounds]);
+  }, [ready, transform, scale, bounds, bgUrl, overlayUrl]);
 
   // 缩放（保持指针下的点不动），移植自 zoomPreview；显示与状态均取整
   const zoomTo = useCallback((value: number, clientX?: number, clientY?: number) => {
@@ -304,7 +306,15 @@ export default function PosterCanvas({
   };
 
   // 选框位置（裁到画布内），用于编辑模式的边框与把手
-  const b = bounds();
+  const ratio = bgUrl && bgSize.width && bgSize.height
+    ? Math.max(CANVAS_W / bgSize.width, CANVAS_H / bgSize.height) * transform.scale
+    : 0;
+  const b = {
+    w: bgSize.width * ratio,
+    h: bgSize.height * ratio,
+    x: (CANVAS_W - bgSize.width * ratio) / 2 + transform.x,
+    y: (CANVAS_H - bgSize.height * ratio) / 2 + transform.y,
+  };
   const sel = {
     left: Math.max(0, b.x) * scale,
     top: Math.max(0, b.y) * scale,
@@ -326,8 +336,8 @@ export default function PosterCanvas({
   return (
     <div className="flex h-full flex-col">
       {/* 工具栏 */}
-      <div className="flex h-11 items-center gap-3 px-1">
-        <label className="flex items-center gap-2 text-sm text-neutral-700">
+      <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-3 px-1 py-1">
+        <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-sm text-neutral-700">
           预览缩放
           <input
             type="range"
@@ -340,7 +350,7 @@ export default function PosterCanvas({
           />
           <span className="w-11 tabular-nums">{zoom}%</span>
         </label>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
           {editing ? (
             <>
               <button
