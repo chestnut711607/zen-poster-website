@@ -68,34 +68,23 @@ export function isTextareaField(key: string): boolean {
   );
 }
 
-/** 主标题自动修正：每行最多 6 字、最多 3 行、总字数最多 24（移植自 fix_title_text） */
-export function fixTitleText(text: string): { text: string; message: string | null } {
-  if (!text) return { text, message: null };
-  const newLines: string[] = [];
-  let fixed = false;
-  const reasons: string[] = [];
-  for (let line of text.split("\n")) {
-    while (line.length > 6) {
-      newLines.push(line.slice(0, 6));
-      line = line.slice(6);
-      fixed = true;
-    }
-    newLines.push(line);
+export function wrapTitle(text: string): string {
+  const lines: string[] = [];
+  for (const line of text.split(/\r\n|\r|\n/)) {
+    const chars = Array.from(line);
+    if (!chars.length) lines.push('');
+    for (let i = 0; i < chars.length; i += 6) lines.push(chars.slice(i, i + 6).join(''));
   }
-  if (newLines.length > 3) {
-    newLines.length = 3;
-    fixed = true;
-    reasons.push("超过3行");
-  }
-  let finalText = newLines.join("\n");
-  const charCount = finalText.replace(/\n/g, "").length;
-  if (charCount > 24) {
-    const chars = finalText.replace(/\n/g, "").slice(0, 24);
-    const chunked: string[] = [];
-    for (let i = 0; i < chars.length; i += 6) chunked.push(chars.slice(i, i + 6));
-    finalText = chunked.join("\n");
-    fixed = true;
-    if (!reasons.includes("总字数超过24字")) reasons.push("总字数超过24字");
-  }
-  return { text: finalText, message: fixed ? `${reasons.join("、")}自动换行。` : null };
+  return lines.join('\n');
+}
+
+/** Validate layout without truncating the user's title. */
+export function getTitleStatus(text: string) {
+  const lines = text.split(/\r\n|\r|\n/);
+  const count = lines.reduce((total, line) => total + Array.from(line).length, 0);
+  const issues: string[] = [];
+  if (count > 18) issues.push(`超出 ${count - 18} 字，请自行缩短至 18 字以内`);
+  if (lines.some((line) => Array.from(line).length > 6)) issues.push('单行超过 6 字，请自行换行或缩短');
+  if (lines.length > 3) issues.push('超过 3 行，请自行调整');
+  return { count, message: issues.length ? issues.join('；') : null };
 }

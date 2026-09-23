@@ -1,12 +1,13 @@
 // 海报画布：背景 + 文字层实时合成预览；编辑模式下可拖拽/四角缩放背景图。
 // 移植自 Streamlit 版 image_editor/index.html，交互与参数（bg_transform）完全一致。
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Minus, Plus, Undo2, Redo2 } from "lucide-react";
 import type { Transform } from "@/api";
 
 const CANVAS_W = 1080;
 const CANVAS_H = 1920;
-const FADE = 48; // 上下渐变遮罩高度（px）
-const FIT_MARGIN = FADE + 16; // 100% 预览时海报与渐变区间的距离
+const FADE = 12; // 上下渐变遮罩高度（px）
+const FIT_MARGIN = 24; // 100% 预览时海报与渐变区间的距离
 
 type DragState = {
   pointerId: number;
@@ -53,13 +54,11 @@ export default function PosterCanvas({
   canUndo,
   canRedo,
   onTransformChange,
-  onTransformCommit,
   onTransformNudge,
   onGestureBegin,
   onGestureEnd,
   onUndo,
   onRedo,
-  onEditingChange,
 }: PosterCanvasProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -237,7 +236,7 @@ export default function PosterCanvas({
     const onKey = (e: KeyboardEvent) => {
       if (!editingRef.current) return;
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable || target.closest('[role="tablist"]'))) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) onRedo();
@@ -335,59 +334,7 @@ export default function PosterCanvas({
 
   return (
     <div className="flex h-full flex-col">
-      {/* 工具栏 */}
-      <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-3 px-1 py-1">
-        <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-sm text-neutral-700">
-          预览缩放
-          <input
-            type="range"
-            min={30}
-            max={200}
-            value={zoom}
-            onChange={(e) => zoomTo(Number(e.target.value))}
-            className="w-32 accent-[#74B7D9]"
-            aria-label="预览缩放"
-          />
-          <span className="w-11 tabular-nums">{zoom}%</span>
-        </label>
-        <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
-          {editing ? (
-            <>
-              <button
-                className="rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm leading-none hover:bg-neutral-50 disabled:opacity-35"
-                onClick={onUndo}
-                disabled={!canUndo}
-                title="撤回（⌘Z）"
-                aria-label="撤回"
-              >
-                ↶
-              </button>
-              <button
-                className="rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm leading-none hover:bg-neutral-50 disabled:opacity-35"
-                onClick={onRedo}
-                disabled={!canRedo}
-                title="重做（⇧⌘Z）"
-                aria-label="重做"
-              >
-                ↷
-              </button>
-              <div className="mx-1 h-5 w-px bg-neutral-200" />
-              <button
-                className="rounded-md border border-neutral-300 bg-white px-3.5 py-1.5 text-sm hover:bg-neutral-50"
-                onClick={() => onTransformCommit({ scale: 1, x: 0, y: 0 })}
-              >
-                恢复默认
-              </button>
-              <button
-                className="rounded-md bg-[#74B7D9] px-3.5 py-1.5 text-sm text-[#0D3A52] hover:bg-[#5AA5CC]"
-                onClick={() => onEditingChange(false)}
-              >
-                确认
-              </button>
-            </>
-          ) : null}
-        </div>
-      </div>
+      <div className="zp-canvas-actions"><span>{editing ? '拖动图片或四角调整构图' : ''}</span><div><button aria-label="撤回背景调整" title="撤回背景调整" disabled={!canUndo} onClick={onUndo}><Undo2 size={18} /></button><button aria-label="重做背景调整" title="重做背景调整" disabled={!canRedo} onClick={onRedo}><Redo2 size={18} /></button></div></div>
 
       {/* 视口：唯一可滚动区域，上下 48px 渐变遮罩 */}
       <div
@@ -416,6 +363,13 @@ export default function PosterCanvas({
             onPointerCancel={onPointerEnd}
           >
             <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H} className="block h-full w-full" />
+            {/* 文字层未生成时不露「半成品」：整体遮住，等 overlay 到位再一次亮相 */}
+            {!overlayUrl && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[#F7FBFD]">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#74B7D9] border-t-transparent" />
+                <span className="text-sm tracking-wide text-neutral-400">正在生成预览…</span>
+              </div>
+            )}
             {editing && (
               <div
                 className="pointer-events-none absolute border-2 border-[#74B7D9]"
@@ -435,6 +389,7 @@ export default function PosterCanvas({
           </div>
         </div>
       </div>
+      <div className="zp-canvas-zoom"><button aria-label="缩小预览" disabled={zoom <= 30} onClick={() => zoomTo(zoom - 10)}><Minus size={17} /></button><button className="zp-fit-button" onClick={() => zoomTo(100)} title="恢复适应窗口">{zoom === 100 ? '适应窗口' : `${zoom}%`}</button><button aria-label="放大预览" disabled={zoom >= 200} onClick={() => zoomTo(zoom + 10)}><Plus size={17} /></button></div>
     </div>
   );
 }

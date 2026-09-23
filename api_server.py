@@ -94,6 +94,16 @@ def templates(type_name: Annotated[str | None, Query(alias="type")] = None) -> l
     ]
 
 
+@lru_cache(maxsize=256)
+def _gallery_dimensions(path: str, modified_ns: int) -> tuple[int, int]:
+    # Include file modification time in the cache key; EXIF rotation affects display size.
+    with Image.open(path) as img:
+        width, height = img.size
+        if img.getexif().get(274) in (5, 6, 7, 8):
+            width, height = height, width
+        return width, height
+
+
 @app.get("/api/gallery")
 def gallery() -> dict:
     exts = {".jpg", ".jpeg", ".png", ".webp"}
@@ -101,7 +111,13 @@ def gallery() -> dict:
     if BG_DIR.exists():
         for path in sorted(BG_DIR.iterdir()):
             if path.is_file() and path.suffix.lower() in exts:
+                try:
+                    width, height = _gallery_dimensions(str(path), path.stat().st_mtime_ns)
+                except (OSError, ValueError):
+                    continue
                 items.append({
+                    "width": width,
+                    "height": height,
                     "name": path.name,
                     "url": f"/static/backgrounds/{path.name}",
                     "thumb": f"/api/thumb/{path.name}",

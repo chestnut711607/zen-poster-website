@@ -18,7 +18,7 @@ export type TemplateItem = {
   field_defaults: Record<string, string>;
 };
 
-export type GalleryItem = { name: string; url: string; thumb?: string };
+export type GalleryItem = { name: string; url: string; thumb?: string; width?: number; height?: number };
 
 export type TemplateFileItem = { name: string; size: number };
 

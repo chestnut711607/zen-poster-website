@@ -1,5 +1,5 @@
+import { ArrowLeft, Download, Images, RotateCcw, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   downloadPoster,
   fetchDefaultCopy,
@@ -16,20 +16,14 @@ import {
   type TemplateType,
   type Transform,
 } from "@/api";
-import { FIELD_LABELS, fixTitleText, isTextareaField } from "@/labels";
+import { FIELD_LABELS, getTitleStatus, isTextareaField, wrapTitle } from "@/labels";
+import BackgroundSelection from "@/components/BackgroundSelection";
+import GalleryModal from "@/components/GalleryModal";
+import TemplateSelection from "@/components/TemplateSelection";
+import WorkflowHeader from "@/components/WorkflowHeader";
+import TypeSelection from "@/components/TypeSelection";
 import PosterCanvas from "@/components/PosterCanvas";
-
-const STEPS = ["选择类型", "选背景图", "选择模版", "编辑下载"];
-
-// Step 1 类型缩略图：把图片（建议 540×960 或任意 9:16 竖图）放进
-// web/public/type-previews/ 目录，然后把下面对应的 null 改成 "/type-previews/文件名.jpg"
-const TYPE_PREVIEWS: Record<string, string | null> = {
-  "文案主导型": "/type-previews/copy.jpg",
-  "信息图表型": "/type-previews/infographic.jpg",
-  "认证证书型": "/type-previews/cert.jpg",
-  "意境主导型": null,
-};
-const GREEN = "#2B7BA8";
+import { resolveDraft } from "@/drafts";
 
 function useDebouncedValue<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -42,18 +36,31 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 
 export default function App() {
   const [step, setStep] = useState(1);
+  const [typesLoading, setTypesLoading] = useState(true);
+  const [typesFailed, setTypesFailed] = useState(false);
   const [types, setTypes] = useState<TemplateType[]>([]);
   const [typeName, setTypeName] = useState<string | null>(null);
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [templateName, setTemplateName] = useState<string | null>(null);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
+  const [uploadingBg, setUploadingBg] = useState(false);
+  const [galleryLoading, setGalleryLoading] = useState(true);
+  const [galleryFailed, setGalleryFailed] = useState(false);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesFailed, setTemplatesFailed] = useState(false);
+  const [templatesRetry, setTemplatesRetry] = useState(0);
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [defaultCopy, setDefaultCopy] = useState<Record<string, string>>({});
   const [templateFiles, setTemplateFiles] = useState<Record<string, TemplateFileItem[]>>({});
   const [bg, setBg] = useState<BgRef | null>(null);
   const [copy, setCopy] = useState<Record<string, string>>({});
+  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [compatibleCopy, setCompatibleCopy] = useState<Record<string, string>>({});
   const [transform, setTransform] = useState<Transform>({ scale: 1, x: 0, y: 0 });
   const [editing, setEditing] = useState(false);
+  const [editorTab, setEditorTab] = useState<"copy" | "background" | "assets">("copy");
+  const backgroundInput = useRef<HTMLInputElement>(null);
 
   // ---- 背景位置的撤回 / 重做 ----
   const transformRef = useRef(transform);
@@ -116,45 +123,56 @@ export default function App() {
   }, [syncUndoFlags]);
   const [logo, setLogo] = useState<{ id: string; url: string } | null>(null);
   const [qr, setQr] = useState<{ id: string; url: string } | null>(null);
-  const [titleMsg, setTitleMsg] = useState<string | null>(null);
+  const titleStatus = getTitleStatus(copy.title_text_cn ?? '');
+  const [titleNotice, setTitleNotice] = useState<string | null>(null);
+  const [composingTitle, setComposingTitle] = useState<string | null>(null);
+  const titleComposing = useRef(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const loadTypes = useCallback(async () => {
+    setTypesLoading(true);
+    setTypesFailed(false);
+    try { setTypes(await fetchTemplateTypes()); }
+    catch { setTypesFailed(true); }
+    finally { setTypesLoading(false); }
+  }, []);
+
+  const loadGallery = useCallback(async () => {
+    setGalleryLoading(true);
+    setGalleryFailed(false);
+    try { setGallery(await fetchGallery()); }
+    catch { setGalleryFailed(true); }
+    finally { setGalleryLoading(false); }
+  }, []);
+  useEffect(() => { void loadTypes(); void loadGallery(); }, [loadTypes, loadGallery]);
+
   useEffect(() => {
-    fetchTemplateTypes().then(setTypes).catch(() => setError("后端未启动？请先运行 uvicorn api_server:app --port 8000"));
     fetchDefaultCopy().then(setDefaultCopy).catch(() => {});
-    fetchGallery().then(setGallery).catch(() => {});
     fetchTemplateFiles().then(setTemplateFiles).catch(() => {});
   }, []);
 
   useEffect(() => {
     if (!typeName) return;
+    let cancelled = false;
+    setTemplatesLoading(true);
+    setTemplatesFailed(false);
+    setTemplates([]);
     fetchTemplates(typeName).then((items) => {
+      if (cancelled) return;
       setTemplates(items);
-      setTemplateName(items[0]?.name ?? null);
-    }).catch(() => setTemplates([]));
-  }, [typeName]);
+    }).catch(() => { if (!cancelled) setTemplatesFailed(true); }).finally(() => { if (!cancelled) setTemplatesLoading(false); });
+    return () => { cancelled = true; };
+  }, [typeName, templatesRetry]);
 
   const activeTemplate = useMemo(
     () => templates.find((t) => t.name === templateName) ?? null,
     [templates, templateName]
   );
 
-  // 切换模版：按 field_defaults + DEFAULT_COPY_DATA 初始化文案
-  useEffect(() => {
-    if (!activeTemplate) return;
-    const next: Record<string, string> = {};
-    for (const key of activeTemplate.include) {
-      if (["logo", "qr", "course_slogan"].includes(key)) continue;
-      next[key] = activeTemplate.field_defaults?.[key] ?? defaultCopy[key] ?? "";
-    }
-    setCopy(next);
-    setTransform({ scale: 1, x: 0, y: 0 });
-    undoStack.current = [];
-    redoStack.current = [];
-    syncUndoFlags();
-    setEditing(false);
-  }, [activeTemplate, defaultCopy, syncUndoFlags]);
+  const templateCopies = useMemo(() => Object.fromEntries(templates.map((template) => [
+    template.name, resolveDraft(template, defaultCopy, compatibleCopy, drafts[template.name]),
+  ])), [templates, defaultCopy, compatibleCopy, drafts]);
 
   const editableFields = useMemo(
     () =>
@@ -169,7 +187,7 @@ export default function App() {
   const [overlayUrl, setOverlayUrl] = useState<string | null>(null);
   const overlayReqRef = useRef(0);
   useEffect(() => {
-    if (!templateName || step < 3) return;
+    if (!templateName || step < 3 || copy !== debouncedCopy) return;
     const reqId = ++overlayReqRef.current;
     fetchRenderURL({
       template: templateName,
@@ -184,25 +202,46 @@ export default function App() {
         if (overlayReqRef.current === reqId) setOverlayUrl(url);
       })
       .catch(() => {});
-  }, [templateName, debouncedCopy, logo, qr, step]);
+    return () => { overlayReqRef.current += 1; };
+  }, [templateName, copy, debouncedCopy, logo, qr, step]);
 
   const pickTemplate = (name: string) => {
+    const next = templateCopies[name];
+    if (!next) return;
+    setCopy(next);
+    setDrafts((prev) => ({ ...prev, [name]: next }));
+    setOverlayUrl(null);
     setTemplateName(name);
+    setEditing(false);
+    setEditorTab("copy");
     setStep(4);
   };
 
   const handleUploadBg = async (file: File) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('请选择 JPG、PNG 或 WebP 图片。');
+      return;
+    }
+    setUploadingBg(true);
+    setError(null);
     try {
       const { id, url } = await uploadFile(file);
       setBg({ kind: "upload", id, url });
-      setStep(3);
+      setTransform({ scale: 1, x: 0, y: 0 });
+      undoStack.current = [];
+      redoStack.current = [];
+      syncUndoFlags();
     } catch {
-      setError("背景上传失败");
-    }
+      setError("背景上传失败，请重试。");
+    } finally { setUploadingBg(false); }
   };
 
   const handleDownload = async () => {
     if (!templateName) return;
+    if (activeTemplate?.include.includes('title_text_cn') && titleStatus.count > 18) {
+      setError('中文主标题最多 18 字，请缩短后再下载。');
+      return;
+    }
     setDownloading(true);
     try {
       await downloadPoster(
@@ -227,49 +266,34 @@ export default function App() {
 
   const goStep = (n: number) => {
     if (n < step) {
-      if (n <= 2) setBg(null);
-      if (n <= 1) setTypeName(null);
       setStep(n);
     }
   };
 
-  const onCopyChange = (key: string, value: string) =>
+  const onCopyChange = (key: string, value: string) => {
+    if (key === 'title_text_cn') {
+      if (titleComposing.current) {
+        setComposingTitle(value);
+        return;
+      }
+      const count = getTitleStatus(value).count;
+      if (count > 18 && count >= titleStatus.count) {
+        setTitleNotice('最多 18 字，本次超限输入未应用，请缩短后再输入。');
+        return;
+      }
+      value = wrapTitle(value);
+      setTitleNotice(null);
+    }
     setCopy((prev) => ({ ...prev, [key]: value }));
-
-  const onTitleBlur = (key: string) => {
-    const { text, message } = fixTitleText(copy[key] ?? "");
-    if (text !== (copy[key] ?? "")) onCopyChange(key, text);
-    setTitleMsg(message);
+    setCompatibleCopy((prev) => ({ ...prev, [key]: value }));
+    if (templateName) setDrafts((prev) => ({
+      ...prev, [templateName]: { ...prev[templateName], [key]: value },
+    }));
   };
 
   return (
-    <div className="flex h-screen flex-col bg-white text-neutral-900">
-      {/* 进度条：四个连体分段按钮，区分 已完成 / 进行中 / 未开始 */}
-      <header className="shrink-0 border-b border-neutral-200 px-6 py-4">
-        <div className="grid grid-cols-4 overflow-hidden rounded-xl border border-neutral-200 shadow-sm">
-          {STEPS.map((label, i) => {
-            const num = i + 1;
-            const done = num < step;
-            const current = num === step;
-            return (
-              <button
-                key={label}
-                onClick={() => goStep(num)}
-                disabled={!done}
-                className={`border-r border-neutral-200 py-3 text-[15px] font-semibold tracking-wide transition-colors last:border-r-0 ${
-                  current
-                    ? "bg-[#74B7D9] text-[#0D3A52]"
-                    : done
-                      ? "bg-[#E3F1FA] text-[#2B7BA8] hover:bg-[#CFE8F6]"
-                      : "cursor-default bg-white text-neutral-400"
-                }`}
-              >
-                {done ? "✓ " : `${num} · `}{label}
-              </button>
-            );
-          })}
-        </div>
-      </header>
+    <div className="zp-app flex h-screen flex-col bg-white text-neutral-900">
+      <WorkflowHeader step={step} onBack={goStep} />
 
       {error && (
         <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-800">
@@ -278,184 +302,78 @@ export default function App() {
         </div>
       )}
 
-      <main className="min-h-0 flex-1 overflow-hidden">
+      <main key={step} className={`min-h-0 flex-1 ${step <= 3 ? "zp-main-home" : "overflow-hidden"}`}>
         {/* Step 1 · 选择类型 */}
         {step === 1 && (
-          <div className="mx-auto max-w-5xl overflow-auto p-8">
-            <h1 className="text-3xl font-bold tracking-tight">Step 1 · 选择模板类型</h1>
-            <p className="mt-3 text-sm text-neutral-500">选择最符合您活动气质的模板类型。</p>
-            <div className="mt-8 grid grid-cols-2 gap-4">
-              {types.map((t) => {
-                const preview = TYPE_PREVIEWS[t.name] ?? null;
-                const files = templateFiles[t.name] ?? [];
-                return (
-                  <div
-                    key={t.name}
-                    className={`rounded-xl border border-neutral-200 bg-[#F7FBFD] transition ${
-                      t.available ? "hover:border-[#74B7D9] hover:shadow-md" : "opacity-60"
-                    }`}
-                  >
-                    <button
-                      disabled={!t.available}
-                      onClick={() => { setTypeName(t.name); setStep(2); }}
-                      className={`flex w-full items-center gap-5 p-5 text-left ${t.available ? "" : "cursor-default"}`}
-                    >
-                      {/* 类型缩略图：未配置图片时用纯色块占位（9:16 海报比例） */}
-                      <div className="w-28 shrink-0 overflow-hidden rounded-lg border border-neutral-200 shadow-sm">
-                        {preview ? (
-                          <img src={preview} alt={`${t.name}预览`} className="block aspect-[9/16] w-full object-cover" />
-                        ) : (
-                          <div
-                            className="flex aspect-[9/16] w-full items-center justify-center"
-                            style={{ background: t.preview_bg_color }}
-                          >
-                            <span className="text-xs tracking-widest text-neutral-400">
-                              {t.available ? "缩略图占位" : "敬请期待"}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-lg font-semibold text-neutral-800">{t.name}</div>
-                        <div className="mt-1.5 text-sm leading-relaxed text-neutral-500">{t.desc}</div>
-                        <div className="mt-3 text-xs font-medium" style={{ color: GREEN }}>{t.tag}</div>
-                      </div>
-                    </button>
-                    {/* 模版文件下载：后端 template_files/<系列>/ 里有文件才显示 */}
-                    {t.available && files.length > 0 && (
-                      <div className="border-t border-neutral-200/80 px-5 py-2.5">
-                        <a
-                          href={`/api/template-files/${encodeURIComponent(t.name)}/download`}
-                          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#2B7BA8] transition hover:text-[#155e85]"
-                          title={files.map((f) => f.name).join("、")}
-                        >
-                          ↓ 下载模版文件（{files.length} 个文件）
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <TypeSelection types={types} files={templateFiles} loading={typesLoading}
+            failed={typesFailed} onRetry={loadTypes}
+            onPick={(name) => { if (name !== typeName) setSelectedTemplate(null); setTypeName(name); setStep(2); }} />
         )}
 
-        {/* Step 2 · 选背景图 */}
-        {step === 2 && (
-          <div className="mx-auto max-w-5xl overflow-auto p-8">
-            <h1 className="text-3xl font-bold tracking-tight">Step 2 · 选择背景图片</h1>
-            <p className="mt-3 text-sm text-neutral-500">
-              已选类型：<strong className="text-neutral-800">{typeName}</strong>
-              <span className="mx-2 text-neutral-300">|</span>请为您的海报选择一张背景图片。
-            </p>
-            <div className="mt-8 grid grid-cols-2 gap-8">
-              <div>
-                <h3 className="text-lg font-semibold">本地上传</h3>
-                <p className="mt-1 mb-3 text-sm text-neutral-500">从电脑选择或拖拽一张图片作为海报背景。</p>
-                <label
-                  className="flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-[1.5px] border-dashed border-[#a9cfe2] bg-[#f7fbfd] transition hover:border-[#74B7D9] hover:bg-[#EDF6FC]"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const f = e.dataTransfer.files?.[0];
-                    if (f) handleUploadBg(f);
-                  }}
-                >
-                  <span className="text-[16px] font-medium text-[#2f5d75]">点击或拖拽图片至此</span>
-                  <span className="text-[13px] text-neutral-400">支持 JPG / PNG / WebP</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) handleUploadBg(f);
-                    }}
-                  />
-                </label>
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold">精选图库</h3>
-                <p className="mt-1 mb-3 text-sm text-neutral-500">使用系统预设的高质量背景。</p>
-                <button
-                  onClick={() => setGalleryOpen(true)}
-                  className="flex h-40 w-full cursor-pointer items-center justify-center rounded-xl border-[1.5px] border-dashed border-[#a9cfe2] bg-[#f7fbfd] text-[16px] font-semibold text-[#2f5d75] transition hover:border-[#74B7D9] hover:bg-[#EDF6FC] hover:text-[#2B7BA8]"
-                >
-                  打开图库选择
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3 · 选择模版 */}
-        {step === 3 && (
-          <div className="h-full overflow-auto p-8">
-            <div className="mx-auto max-w-6xl">
-            <h1 className="text-3xl font-bold tracking-tight">Step 3 · 选择模版风格</h1>
-            <p className="mt-3 text-sm text-neutral-500">点击缩略图进入编辑，预览均为所选背景的实时渲染。</p>
-            <div className="mt-8 grid grid-cols-4 gap-8">
-              {templates.map((t) => (
-                <TemplateThumb
-                  key={t.name}
-                  template={t}
-                  bg={bg}
-                  copy={defaultCopy}
-                  onPick={pickTemplate}
-                />
-              ))}
-            </div>
-            </div>
-          </div>
-        )}
+        {step === 2 && <BackgroundSelection bg={bg} typeName={typeName} busy={uploadingBg}
+          onUpload={handleUploadBg} onGallery={() => setGalleryOpen(true)} onBack={() => goStep(1)} onNext={() => setStep(3)} />}
+        {step === 3 && <TemplateSelection templates={templates} bg={bg} copies={templateCopies}
+          selected={selectedTemplate} loading={templatesLoading} failed={templatesFailed}
+          onRetry={() => setTemplatesRetry(v => v + 1)} onSelect={setSelectedTemplate}
+          onBack={() => goStep(2)} onEdit={pickTemplate} />}
 
         {/* Step 4 · 编辑下载 */}
         {step === 4 && activeTemplate && (
-          <div className="flex h-full">
-            {/* 侧栏 */}
-            <aside className="w-[340px] shrink-0 overflow-y-auto border-r border-neutral-200 p-4">
-              <h3 className="text-base font-semibold">修改图片大小及位置</h3>
-              <button
-                className={`mt-2 w-full rounded-md border px-3 py-2 text-sm font-medium transition ${
-                  editing
-                    ? "border-[#74B7D9] bg-[#74B7D9] text-[#0D3A52]"
-                    : "border-[#A8D3EA] bg-[#E3F1FA] text-[#2B7BA8] hover:border-[#74B7D9] hover:bg-[#D9EDF9]"
-                }`}
-                onClick={() => setEditing((v) => !v)}
-              >
-                {editing ? "退出编辑" : "编辑图片"}
-              </button>
-
-              <h3 className="mt-6 text-base font-semibold">素材上传</h3>
-              <div className="mt-2 space-y-3">
-                <MiniUpload label="Logo" value={logo} onChange={setLogo} />
-                {activeTemplate.include.includes("qr") && (
-                  <MiniUpload label="二维码" value={qr} onChange={setQr} />
-                )}
+          <div className="zp-editor">
+            <aside className="zp-editor-sidebar">
+              <div className="zp-editor-heading"><h1>编辑内容</h1><p>修改内容，预览同步更新</p></div>
+              <div className="zp-editor-tabs" role="tablist" aria-label="编辑类别">
+                {([{ key: 'copy', label: '文案' }, { key: 'background', label: '背景' }, { key: 'assets', label: 'Logo / 二维码' }] as const).map((tab, index, tabs) => <button key={tab.key} id={`editor-tab-${tab.key}`} role="tab" aria-selected={editorTab === tab.key} aria-controls={`editor-panel-${tab.key}`} tabIndex={editorTab === tab.key ? 0 : -1} onClick={() => { setEditorTab(tab.key); setEditing(tab.key === 'background'); }} onKeyDown={e => {
+                  const next = e.key === 'ArrowRight' ? (index + 1) % 3 : e.key === 'ArrowLeft' ? (index + 2) % 3 : e.key === 'Home' ? 0 : e.key === 'End' ? 2 : -1;
+                  if (next < 0) return;
+                  e.preventDefault();
+                  setEditorTab(tabs[next].key); setEditing(tabs[next].key === 'background');
+                  document.getElementById(`editor-tab-${tabs[next].key}`)?.focus();
+                }}>{tab.label}</button>)}
               </div>
-
-              <hr className="my-5 border-neutral-200" />
-              <h3 className="text-base font-semibold">文案修改</h3>
-              <p className="mt-1 text-xs text-neutral-500">边输入边更新，右侧预览实时刷新。</p>
+              {editorTab === 'copy' && <div className="zp-editor-panel" id="editor-panel-copy" role="tabpanel" aria-labelledby="editor-tab-copy">
               <div className="mt-3 space-y-4">
                 {editableFields.map((key) => (
                   <div key={key}>
-                    <label className="mb-1 block text-[13px] font-medium text-neutral-700">
+                    <label htmlFor={`copy-${key}`} className="mb-1 block text-[13px] font-medium text-neutral-700">
                       {FIELD_LABELS[key]}
                     </label>
-                    {key === "title_text_cn" && titleMsg && (
-                      <div className="mb-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">⚠️ {titleMsg}</div>
+                    {key === "title_text_cn" && (
+                      <div id="title-status" aria-live="polite" className={`mb-1 text-xs ${titleStatus.message ? 'text-amber-800' : 'text-neutral-500'}`}>
+                        <span>{titleStatus.count} / 18 字（不含换行）</span>
+                        {titleStatus.count > 18 && <p className="mt-1">已有标题超出 {titleStatus.count - 18} 字，请缩短至 18 字以内。</p>}
+                        {(copy.title_text_cn ?? '').split('\n').length > 3 && <p className="mt-1">标题超过 3 行，可能超出模板区域，请检查预览。</p>}
+                        {composingTitle === null && titleNotice && <p className="mt-1 text-amber-800">{titleNotice}</p>}
+                      </div>
                     )}
                     {isTextareaField(key) ? (
                       <textarea
+                        id={`copy-${key}`}
                         rows={key.includes("title") ? 3 : 2}
                         className="w-full resize-y rounded-md border border-neutral-300 bg-neutral-50 px-2.5 py-2 text-sm outline-none focus:border-[#74B7D9] focus:ring-2 focus:ring-[#74B7D9]/25"
-                        value={copy[key] ?? ""}
-                        onChange={(e) => onCopyChange(key, e.target.value)}
-                        onBlur={key === "title_text_cn" ? () => onTitleBlur(key) : undefined}
+                        value={key === 'title_text_cn' ? composingTitle ?? copy[key] ?? '' : copy[key] ?? ''}
+                        onCompositionStart={key === 'title_text_cn' ? (e) => {
+                          titleComposing.current = true;
+                          setTitleNotice(null);
+                          setComposingTitle(e.currentTarget.value);
+                        } : undefined}
+                        onCompositionEnd={key === 'title_text_cn' ? (e) => {
+                          titleComposing.current = false;
+                          setComposingTitle(null);
+                          onCopyChange(key, e.currentTarget.value);
+                        } : undefined}
+                        onChange={(e) => {
+                          const composing = titleComposing.current || (e.nativeEvent as InputEvent).isComposing;
+                          if (key === 'title_text_cn' && composing) {
+                            titleComposing.current = true;
+                            setComposingTitle(e.target.value);
+                          } else onCopyChange(key, e.target.value);
+                        }}
+                        aria-describedby={key === 'title_text_cn' ? 'title-status' : undefined}
                       />
                     ) : (
                       <input
+                        id={`copy-${key}`}
                         className="w-full rounded-md border border-neutral-300 bg-neutral-50 px-2.5 py-2 text-sm outline-none focus:border-[#74B7D9] focus:ring-2 focus:ring-[#74B7D9]/25"
                         value={copy[key] ?? ""}
                         onChange={(e) => onCopyChange(key, e.target.value)}
@@ -464,10 +382,24 @@ export default function App() {
                   </div>
                 ))}
               </div>
+              </div>}
+              {editorTab === 'background' && <div className="zp-editor-panel" id="editor-panel-background" role="tabpanel" aria-labelledby="editor-tab-background">
+                <h2>背景图片</h2>
+                {bg && <div className="zp-editor-bg-preview"><img src={bg.url} alt="当前背景" /></div>}
+                <input ref={backgroundInput} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void handleUploadBg(file); }} />
+                <div className="zp-editor-replace"><button className="zp-button zp-button-secondary" disabled={uploadingBg} onClick={() => backgroundInput.current?.click()}><Upload size={16} />{uploadingBg ? '上传中…' : '重新上传'}</button><button className="zp-button zp-button-secondary" disabled={uploadingBg} onClick={() => setGalleryOpen(true)}><Images size={16} />从图库更换</button></div>
+                <div className="zp-editor-section"><h2>调整构图</h2><p>拖动预览中的图片调整位置，拖动四角调整大小。</p><div className="zp-background-scale">图片比例<span>{Math.round(transform.scale * 100)}%</span></div><button className="zp-button zp-button-primary" onClick={() => setEditing(v => !v)}>{editing ? '完成调整' : '调整图片'}</button><button className="zp-button zp-button-secondary" onClick={() => commitTransform({scale: 1, x: 0, y: 0})}><RotateCcw size={16} />恢复默认构图</button></div>
+              </div>}
+              {editorTab === 'assets' && <div className="zp-editor-panel" id="editor-panel-assets" role="tabpanel" aria-labelledby="editor-tab-assets"><p className="zp-panel-intro">按需添加品牌标识和二维码，上传后同步显示在海报中。</p>
+                {activeTemplate.include.includes('logo') && <MiniUpload label="Logo" value={logo} onChange={setLogo} />}
+                {activeTemplate.include.includes('qr') && <MiniUpload label="二维码" value={qr} onChange={setQr} />}
+                {!activeTemplate.include.includes('logo') && !activeTemplate.include.includes('qr') && <p className="zp-panel-intro">当前模板没有 Logo 或二维码位置，可更换模板后添加。</p>}
+              </div>}
             </aside>
 
             {/* 画布 + 下载 */}
-            <section className="flex min-w-0 flex-1 flex-col bg-[#f5f7f8] p-3">
+            <section className="zp-editor-workspace" aria-label="海报预览">
+              <div className="zp-editor-toolbar"><button className="zp-editor-template" onClick={() => goStep(3)}><ArrowLeft size={16} />更换模板</button><button className="zp-button zp-button-primary" disabled={downloading} onClick={handleDownload}><Download size={18} />{downloading ? '正在生成…' : '下载海报'}</button></div>
               <div className="min-h-0 flex-1">
                 <PosterCanvas
                   bgUrl={bg?.url ?? null}
@@ -486,163 +418,23 @@ export default function App() {
                   onEditingChange={setEditing}
                 />
               </div>
-              <div
-                className="flex shrink-0 justify-center px-3 pb-2 pt-6"
-                style={{ background: "linear-gradient(to bottom, rgba(245,247,248,0), #f5f7f8 24px)" }}
-              >
-                <button
-                  disabled={downloading}
-                  onClick={handleDownload}
-                  className="rounded-lg bg-[#277957] px-10 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1e6045] disabled:opacity-45"
-                >
-                  {downloading ? "正在生成…" : "下载高清原图"}
-                </button>
-              </div>
+              <p className="zp-export-note">1080 × 1920 px · PNG</p>
             </section>
           </div>
         )}
       </main>
 
-      {/* 图库弹窗：portal 到 body，避免任何祖先样式影响定位；按文件名前缀分类筛选 */}
-      {galleryOpen &&
-        createPortal(
-          <GalleryModal
-            gallery={gallery}
-            onClose={() => setGalleryOpen(false)}
-            onPick={(g) => {
-              setBg({ kind: "gallery", name: g.name, url: g.url });
-              setGalleryOpen(false);
-              setStep(3);
-            }}
-          />,
-          document.body
-        )}
+      {galleryOpen && <GalleryModal gallery={gallery} current={bg?.kind === 'gallery' ? bg.name : undefined}
+        loading={galleryLoading} failed={galleryFailed} onRetry={loadGallery}
+        onClose={() => setGalleryOpen(false)} onPick={g => {
+          setBg({ kind: 'gallery', name: g.name, url: g.url });
+          setTransform({ scale: 1, x: 0, y: 0 });
+          undoStack.current = [];
+          redoStack.current = [];
+          syncUndoFlags();
+          setGalleryOpen(false);
+        }} />}
     </div>
-  );
-}
-
-/** 图库弹窗：分类筛选 + 图片网格 */
-function GalleryModal({
-  gallery,
-  onClose,
-  onPick,
-}: {
-  gallery: GalleryItem[];
-  onClose: () => void;
-  onPick: (g: GalleryItem) => void;
-}) {
-  const [category, setCategory] = useState("全部");
-  const categories = useMemo(() => {
-    const set = new Set(gallery.map((g) => g.name.replace(/\.[^.]+$/, "").replace(/[\d\s]+$/, "")));
-    return ["全部", ...Array.from(set)];
-  }, [gallery]);
-  const filtered = useMemo(
-    () =>
-      category === "全部"
-        ? gallery
-        : gallery.filter((g) => g.name.replace(/\.[^.]+$/, "").replace(/[\d\s]+$/, "") === category),
-    [gallery, category]
-  );
-
-  return (
-    <div
-      style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)", padding: 24 }}
-      onClick={onClose}
-    >
-      <div
-        style={{ display: "flex", flexDirection: "column", width: "100%", maxWidth: 1280, maxHeight: "90vh", borderRadius: 16, background: "white", boxShadow: "0 25px 50px rgba(0,0,0,0.25)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
-          <h3 className="text-base font-semibold">精选图库</h3>
-          <button className="rounded-md px-2 py-1 text-neutral-500 hover:bg-neutral-100" onClick={onClose} aria-label="关闭">
-            ✕
-          </button>
-        </div>
-        <div className="flex flex-wrap gap-2 border-b border-neutral-100 px-5 py-3">
-          {categories.map((c) => (
-            <button
-              key={c}
-              onClick={() => setCategory(c)}
-              className={`rounded-full border px-3 py-1 text-[13px] transition ${
-                category === c
-                  ? "border-[#74B7D9] bg-[#74B7D9] text-[#0D3A52]"
-                  : "border-neutral-300 bg-white text-neutral-600 hover:border-[#74B7D9] hover:text-[#2B7BA8]"
-              }`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-        {/* 瀑布流：保留图片原始宽高比，竖版/横版都完整显示 */}
-        <div className="columns-5 gap-3 overflow-y-auto p-5">
-          {filtered.map((g) => (
-            <button
-              key={g.name}
-              title={g.name}
-              onClick={() => onPick(g)}
-              className="mb-3 block w-full break-inside-avoid overflow-hidden rounded-lg border-2 border-transparent p-0 transition hover:border-[#74B7D9]"
-            >
-              <img src={g.thumb ?? g.url} alt={g.name} className="block h-auto w-full" loading="lazy" />
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** 模版缩略图：实时渲染预览 */
-function TemplateThumb({
-  template,
-  bg,
-  copy,
-  onPick,
-}: {
-  template: TemplateItem;
-  bg: BgRef | null;
-  copy: Record<string, string>;
-  onPick: (name: string) => void;
-}) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const data: Record<string, string> = {};
-    for (const key of template.include) {
-      if (["logo", "qr", "course_slogan"].includes(key)) continue;
-      data[key] = template.field_defaults?.[key] ?? copy[key] ?? "";
-    }
-    fetchRenderURL({ template: template.name, data, bg, width: 540, format: "jpeg" })
-      .then((u) => { if (!cancelled) setUrl(u); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [template, bg, copy]);
-
-  return (
-    <button
-      onClick={() => onPick(template.name)}
-      className="group overflow-hidden rounded-xl border-2 border-transparent bg-white text-left shadow-sm transition hover:shadow-md"
-    >
-      <div className="relative flex aspect-[9/16] items-center justify-center bg-neutral-100">
-        {url ? (
-          <img src={url} alt={template.name} className="h-full w-full object-cover" loading="lazy" />
-        ) : (
-          /* 骨架屏：呼吸渐变 + 居中提示 */
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-neutral-100 via-neutral-200 to-neutral-100 bg-[length:200%_200%] animate-[pulse_1.6s_ease-in-out_infinite]">
-            <span className="rounded-full bg-white/70 px-3 py-1 text-xs text-neutral-400">渲染中…</span>
-          </div>
-        )}
-        {/* 悬浮变暗 + 编辑按钮 */}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover:bg-black/45 group-hover:opacity-100">
-          <span className="rounded-md bg-white/95 px-4 py-2 text-sm font-semibold text-neutral-800 shadow">
-            编辑此模版
-          </span>
-        </div>
-      </div>
-      <div className="px-3 py-2 text-center text-sm text-neutral-700 group-hover:text-[#2B7BA8]">
-        {template.name}
-      </div>
-    </button>
   );
 }
 
@@ -656,26 +448,17 @@ function MiniUpload({
   value: { id: string; url: string } | null;
   onChange: (v: { id: string; url: string } | null) => void;
 }) {
-  return (
-    <div className="flex items-center gap-3">
-      <label className="flex-1 cursor-pointer rounded-md border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-600 transition hover:border-[#74B7D9] hover:text-[#2B7BA8]">
-        {value ? "重新上传" : `上传${label}`}
-        <input
-          type="file"
-          accept="image/png,image/jpeg"
-          className="hidden"
-          onChange={async (e) => {
-            const f = e.target.files?.[0];
-            if (!f) return;
-            try {
-              onChange(await uploadFile(f));
-            } catch { /* 忽略 */ }
-          }}
-        />
-      </label>
-      {value && (
-        <img src={value.url} alt={label} className="h-10 w-10 rounded border border-neutral-200 object-contain" />
-      )}
-    </div>
-  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  return <div className="zp-asset-upload"><h2>{label}</h2><p>{label === 'Logo' ? '建议使用透明背景的 PNG 图片。' : '上传清晰的二维码图片，保留四周留白。'}</p>
+    {value && <div className="zp-asset-preview"><img src={value.url} alt={label} /></div>}
+    <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={async e => {
+      const file = e.target.files?.[0]; e.target.value = ''; if (!file) return;
+      setBusy(true); setError(null);
+      try { onChange(await uploadFile(file)); } catch { setError('上传失败，请重试。'); } finally { setBusy(false); }
+    }} />
+    <div className="zp-editor-replace"><button className="zp-button zp-button-secondary" disabled={busy} onClick={() => input.current?.click()}><Upload size={16} />{busy ? '上传中…' : value ? `更换${label}` : `上传${label}`}</button>{value && <button className="zp-button zp-button-secondary" disabled={busy} onClick={() => onChange(null)}><X size={16} />移除</button>}</div>
+    {error && <p role="alert" className="zp-upload-error">{error}</p>}
+  </div>;
 }
