@@ -517,7 +517,10 @@ elif st.session_state.step == 2:
         st.session_state.step = 1
         st.rerun()
 
-    name, cfg = st.session_state.chosen_template
+    name, _ = st.session_state.chosen_template
+    # 已打开的编辑会话可能保存着部署前的坐标，每次渲染都读取当前模板配置。
+    cfg = TEMPLATE_MASTER_CONFIG[name]
+    st.session_state.chosen_template = (name, cfg)
     if st.session_state.last_template_name != name:
         st.session_state.last_template_name = name
 
