@@ -335,8 +335,10 @@ def paint_poster(name, cfg, up_bg, up_logo, up_qr, data, font_cache, font_dir: s
             target_w = int(float(l_img.size[0]) * ratio)
             l_img = l_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
             lx, ly = c["logo"]
-            if anchor == "mm": paste_x = lx - (target_w // 2)
-            elif anchor == "ra": paste_x = lx - target_w
+            # Logo 对齐独立于正文，未指定时沿用模板的全局对齐。
+            logo_anchor = cfg.get("logo_anchor", anchor)
+            if logo_anchor == "mm": paste_x = lx - (target_w // 2)
+            elif logo_anchor == "ra": paste_x = lx - target_w
             else: paste_x = lx
             canvas.paste(l_img, (paste_x, ly), l_img)
         except Exception: pass
@@ -349,6 +351,7 @@ def paint_poster(name, cfg, up_bg, up_logo, up_qr, data, font_cache, font_dir: s
         "venue_cont_cn_a", "venue_cont_cn_b", "venue_cont_cn_c", "venue_cont_eg",
         "qr_label_bil", "qr_label_cn", "qr_label_eg",
         "qr_tip_a", "qr_tip_b", "qr_tip_eg",
+        "qr_reserve_text", "public_benefit_text",
         # ── 信息图表型 C1/C2/C3：单日流程 ──
         "sched_label_cn", "sched_label_eg",
         "sched_num_1", "sched_name_cn_1", "sched_name_eg_1", "sched_time_1",
@@ -461,6 +464,7 @@ def paint_poster(name, cfg, up_bg, up_logo, up_qr, data, font_cache, font_dir: s
             elif "day_time" in field:        font = f_day_time
             elif "day_cont" in field:        font =  f_day_cont
             elif "course_qr_tip" in field:   font = f_qr_text
+            elif field in ("qr_reserve_text", "public_benefit_text"): font = f_qr_text
             else: font = f_content
             spacing = 0
             if field.startswith("cert_"):

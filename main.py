@@ -1,3 +1,5 @@
+"""Streamlit 海报矩阵系统入口。"""
+
 import base64
 import io
 import logging
@@ -529,10 +531,29 @@ elif st.session_state.step == 2:
         .stApp { overflow: hidden !important; height: 100vh; }
         /* 勿在外层 section 设 overflow-y + 固定高度：会与 Streamlit 内部滚动区叠成双滚动条 */
         section[data-testid="stSidebar"] {
+            position: sticky !important;
+            top: 0 !important;
+            align-self: flex-start !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
+            flex-shrink: 0 !important;
             overflow-x: hidden !important;
+            overflow-y: hidden !important;
             border-right: 1px solid #ddd;
         }
-        section[data-testid="stSidebar"] > div { padding-top: calc(50px + 0.35rem) !important; }
+        section[data-testid="stSidebar"] > div {
+            height: 100vh !important;
+            max-height: 100vh !important;
+            padding-top: calc(50px + 0.35rem) !important;
+            box-sizing: border-box !important;
+        }
+        section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+            height: 100% !important;
+            max-height: 100% !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            overscroll-behavior: contain;
+        }
         section[data-testid="stSidebar"] [data-testid="stSidebarContent"]::-webkit-scrollbar { width: 4px; }
         section[data-testid="stSidebar"] [data-testid="stSidebarContent"]::-webkit-scrollbar-thumb {
             background-color: #ccc;
@@ -612,6 +633,8 @@ elif st.session_state.step == 2:
             "venue_cont_eg": "地址详情(英)",
             "qr_label_bil": "报名标签(双语)", "qr_label_cn": "报名标签(中)", "qr_label_eg": "报名标签(英)",
             "qr_tip_a": "提示语(单行)", "qr_tip_b": "提示语(换行)", "qr_tip_eg": "提示语(英)",
+            "qr_reserve_text": "二维码旁预约文案",
+            "public_benefit_text": "公益活动文案",
             # 信息图表型 C1–C3：单日流程
             "sched_label_cn": "标题（中文，两个字，需换行）",
             "sched_label_eg": "标题（英文）",
@@ -667,7 +690,10 @@ elif st.session_state.step == 2:
                     or "tip" in key
                     or "title" in key
                     or "sched_label" in key
-                    or key in ("cert_body", "cert_greeting", "cert_footer")
+                    or key in (
+                        "cert_body", "cert_greeting", "cert_footer",
+                        "qr_reserve_text", "public_benefit_text",
+                    )
                 ):
                     val = st.text_area(label_name, value=default_val, height=50, key=unique_key)
                     _sidebar_confirm_row(unique_key)

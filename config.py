@@ -33,6 +33,8 @@ DEFAULT_COPY_DATA = {
     "qr_label_bil": "报名 REGISTRATION", "qr_label_cn": "报名", "qr_label_eg": "REGISTRATION",
     "qr_tip_a": "扫码预约，限 8 人", "qr_tip_b": "扫码预约\n限 8 人",
     "qr_tip_eg": "Scan QR code to reserve\nLimited to 8 participants",
+    "qr_reserve_text": "扫码预约\nScan QR code\nto reserve",
+    "public_benefit_text": "公益活动\nPublic benefit\nactivities",
     "logo": "", "qr": "",
 
     # ── 信息图表型 C1/C2/C3：单日流程（7步） ──────────────────
@@ -193,45 +195,43 @@ def _make_cert_template_config(bg_cert_filename: str, text_color: str) -> dict:
 TEMPLATE_MASTER_CONFIG = {
     "文案主导型B1": {
         "bg_img": "bg1.png", "color": "#1A1A1A", "align": "la",
-        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_a", "qr", "logo"],
-        "coords": {"logo": (75, 62), "title_text_cn": (92, 235), "title_text_eg": (95, 525), "date_num": (95, 1258), "date_year_week": (95, 1212), "date_time":(95, 1350), "prog_label_bil":(92, 1495), "prog_cont_cn_a":(92, 1560), "venue_label_bil": (92, 1655), "venue_cont_cn_a": (92, 1720), "qr": (855, 1619)},
-        "fixed_text1": [{"content": "扫码预约\nScan QR code\nto reserve", "pos": (860, 1525), "font": "f_qr_text"}, {"content": "公益活动\nPublic benefit\nactivities", "pos": (860, 1755), "font": "f_qr_text"}]
+        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_a", "qr_reserve_text", "public_benefit_text", "qr", "logo"],
+        "coords": {"logo": (75, 62), "title_text_cn": (92, 235), "title_text_eg": (95, 525), "date_num": (95, 1258), "date_year_week": (95, 1212), "date_time":(95, 1350), "prog_label_bil":(92, 1495), "prog_cont_cn_a":(92, 1560), "venue_label_bil": (92, 1655), "venue_cont_cn_a": (92, 1720), "qr_reserve_text": (860, 1525), "public_benefit_text": (860, 1755), "qr": (855, 1619)}
     },
     "文案主导型B2": {
         "bg_img": "bg2.png", "color": "#FFFFFF", "align": "la",
-        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_a", "qr", "logo"],
-        "coords": {"logo": (75,62), "title_text_cn": (92, 235), "title_text_eg": (95, 525), "date_num": (95, 1258), "date_year_week": (95, 1212), "date_time":(95, 1350), "prog_label_bil":(92, 1495), "prog_cont_cn_a":(92, 1560), "venue_label_bil": (92, 1655), "venue_cont_cn_a": (92, 1720), "qr": (855, 1619)},
-        "fixed_text1": [{"content": "扫码预约\nScan QR code\nto reserve", "pos": (860, 1525), "font": "f_qr_text"}, {"content": "公益活动\nPublic benefit\nactivities", "pos": (860, 1755), "font": "f_qr_text"}]
+        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_a", "qr_reserve_text", "public_benefit_text", "qr", "logo"],
+        "coords": {"logo": (75,62), "title_text_cn": (92, 235), "title_text_eg": (95, 525), "date_num": (95, 1258), "date_year_week": (95, 1212), "date_time":(95, 1350), "prog_label_bil":(92, 1495), "prog_cont_cn_a":(92, 1560), "venue_label_bil": (92, 1655), "venue_cont_cn_a": (92, 1720), "qr_reserve_text": (860, 1525), "public_benefit_text": (860, 1755), "qr": (855, 1619)}
     },
     "文案主导型B3": {
         "bg_img": "bg3.png", "color": "#1A1A1A", "align": "la",
-        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_b", "qr_label_bil", "qr_tip_a", "qr", "logo"],
-        "coords": {"logo": (75, 62), "title_text_cn": (92, 235), "title_text_eg": (95, 525), "date_num": (95, 1200), "date_year_week": (95, 1156), "date_time":(95, 1292), "prog_label_bil":(92, 1440), "prog_cont_cn_a":(92, 1492), "venue_label_bil": (92, 1583), "venue_cont_cn_b": (92, 1635), "qr_label_bil":(92, 1726), "qr_tip_a":(92, 1781), "qr": (886, 1690)},
-        "fixed_text2": [{"content": "公益活动", "pos": (900, 1835), "font": "f_qr_text"}]
+        "field_defaults": {"public_benefit_text": "公益活动"},
+        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_b", "qr_label_bil", "qr_tip_a", "public_benefit_text", "qr", "logo"],
+        "coords": {"logo": (75, 62), "title_text_cn": (92, 235), "title_text_eg": (95, 525), "date_num": (95, 1200), "date_year_week": (95, 1156), "date_time":(95, 1292), "prog_label_bil":(92, 1440), "prog_cont_cn_a":(92, 1492), "venue_label_bil": (92, 1583), "venue_cont_cn_b": (92, 1635), "qr_label_bil":(92, 1726), "qr_tip_a":(92, 1781), "public_benefit_text": (900, 1835), "qr": (886, 1690)}
     },
     "文案主导型B4": {
         "bg_img": "bg4.png", "color": "#FFFFFF", "align": "la",
-        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_b", "qr_label_bil", "qr_tip_a", "qr", "logo"],
-        "coords": {"logo": (75, 62), "title_text_cn": (92, 235), "title_text_eg": (95, 525), "date_num": (95, 1200), "date_year_week": (95, 1156), "date_time":(95, 1292), "prog_label_bil":(92, 1440), "prog_cont_cn_a":(92, 1492), "venue_label_bil": (92, 1583), "venue_cont_cn_b": (92, 1635), "qr_label_bil":(92, 1726), "qr_tip_a":(92, 1781), "qr": (886, 1690)},
-        "fixed_text2": [{"content": "公益活动", "pos": (900, 1835), "font": "f_qr_text"}]
+        "field_defaults": {"public_benefit_text": "公益活动"},
+        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_b", "qr_label_bil", "qr_tip_a", "public_benefit_text", "qr", "logo"],
+        "coords": {"logo": (75, 62), "title_text_cn": (92, 235), "title_text_eg": (95, 525), "date_num": (95, 1200), "date_year_week": (95, 1156), "date_time":(95, 1292), "prog_label_bil":(92, 1440), "prog_cont_cn_a":(92, 1492), "venue_label_bil": (92, 1583), "venue_cont_cn_b": (92, 1635), "qr_label_bil":(92, 1726), "qr_tip_a":(92, 1781), "public_benefit_text": (900, 1835), "qr": (886, 1690)}
     },
     "文案主导型B5": {
         "bg_img": "bg5.png", "color": "#1A1A1A", "align": "la",
-        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_b", "qr_label_bil", "qr_tip_a", "qr", "logo"],
-        "coords": {"logo": (75, 62), "title_text_cn": (92, 235), "title_text_eg": (95, 525), "date_num": (95, 1139), "date_year_week": (95, 1095), "date_time":(95, 1231), "prog_label_bil":(92, 1440), "prog_cont_cn_a":(92, 1492), "venue_label_bil": (92, 1583), "venue_cont_cn_b": (92, 1635), "qr_label_bil":(92, 1726), "qr_tip_a":(92, 1781), "qr": (886, 1690)},
-        "fixed_text2": [{"content": "公益活动", "pos": (900, 1835), "font": "f_qr_text"}]
+        "field_defaults": {"public_benefit_text": "公益活动"},
+        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_b", "qr_label_bil", "qr_tip_a", "public_benefit_text", "qr", "logo"],
+        "coords": {"logo": (75, 62), "title_text_cn": (92, 235), "title_text_eg": (95, 525), "date_num": (95, 1139), "date_year_week": (95, 1095), "date_time":(95, 1231), "prog_label_bil":(92, 1440), "prog_cont_cn_a":(92, 1492), "venue_label_bil": (92, 1583), "venue_cont_cn_b": (92, 1635), "qr_label_bil":(92, 1726), "qr_tip_a":(92, 1781), "public_benefit_text": (900, 1835), "qr": (886, 1690)}
     },
     "文案主导型B6": {
         "bg_img": "bg6.png", "color": "#FFFFFF", "align": "la",
-        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_b", "qr_label_bil", "qr_tip_a", "qr", "logo"],
-        "coords": {"logo": (75, 62), "title_text_cn": (92, 235), "title_text_eg": (95, 525), "date_num": (95, 1139), "date_year_week": (95, 1095), "date_time":(95, 1231), "prog_label_bil":(92, 1440), "prog_cont_cn_a":(92, 1492), "venue_label_bil": (92, 1583), "venue_cont_cn_b": (92, 1635), "qr_label_bil":(92, 1726), "qr_tip_a":(92, 1781), "qr": (886, 1690)},
-        "fixed_text2": [{"content": "公益活动", "pos": (900, 1835), "font": "f_qr_text"}]
+        "field_defaults": {"public_benefit_text": "公益活动"},
+        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_b", "qr_label_bil", "qr_tip_a", "public_benefit_text", "qr", "logo"],
+        "coords": {"logo": (75, 62), "title_text_cn": (92, 235), "title_text_eg": (95, 525), "date_num": (95, 1139), "date_year_week": (95, 1095), "date_time":(95, 1231), "prog_label_bil":(92, 1440), "prog_cont_cn_a":(92, 1492), "venue_label_bil": (92, 1583), "venue_cont_cn_b": (92, 1635), "qr_label_bil":(92, 1726), "qr_tip_a":(92, 1781), "public_benefit_text": (900, 1835), "qr": (886, 1690)}
     },
     "文案主导型B7": {
         "bg_img": "bg7.png", "color": "#1A1A1A", "align": "la",
-        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_cn", "prog_cont_cn_b", "venue_label_cn", "venue_cont_cn_c", "prog_label_eg", "prog_cont_eg", "venue_label_eg", "venue_cont_eg", "qr_label_cn", "qr_label_eg", "qr_tip_b", "qr_tip_eg", "qr", "logo"],
-        "coords": {"logo": (75, 62), "title_text_cn": (585, 1006), "title_text_eg": (80, 1022), "date_num": (80, 728), "date_year_week": (80, 684), "date_time":(80, 820), "prog_label_cn": (585, 1350), "prog_cont_cn_b": (585, 1398), "venue_label_cn": (585, 1533), "venue_cont_cn_c": (585, 1581), "prog_label_eg": (80,1342), "prog_cont_eg": (80, 1390), "venue_label_eg": (80, 1534), "venue_cont_eg": (80, 1582), "qr_label_cn":(585, 1716), "qr_tip_b":(585, 1764), "qr_label_eg": (80,1726), "qr_tip_eg":(80, 1774), "qr": (886, 1690)},
-        "fixed_text2": [{"content": "公益活动", "pos": (900, 1835), "font": "f_qr_text"}]
+        "field_defaults": {"public_benefit_text": "公益活动"},
+        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_cn", "prog_cont_cn_b", "venue_label_cn", "venue_cont_cn_c", "prog_label_eg", "prog_cont_eg", "venue_label_eg", "venue_cont_eg", "qr_label_cn", "qr_label_eg", "qr_tip_b", "qr_tip_eg", "public_benefit_text", "qr", "logo"],
+        "coords": {"logo": (75, 62), "title_text_cn": (585, 1006), "title_text_eg": (80, 1022), "date_num": (80, 728), "date_year_week": (80, 684), "date_time":(80, 820), "prog_label_cn": (585, 1350), "prog_cont_cn_b": (585, 1398), "venue_label_cn": (585, 1533), "venue_cont_cn_c": (585, 1581), "prog_label_eg": (80,1342), "prog_cont_eg": (80, 1390), "venue_label_eg": (80, 1534), "venue_cont_eg": (80, 1582), "qr_label_cn":(585, 1716), "qr_tip_b":(585, 1764), "qr_label_eg": (80,1726), "qr_tip_eg":(80, 1774), "public_benefit_text": (900, 1835), "qr": (886, 1690)}
     },
     "文案主导型B8": {
         "bg_img": "bg8.png", "color": "#000000", "align": "la",
@@ -240,17 +240,17 @@ TEMPLATE_MASTER_CONFIG = {
             "date_year_week": "#FFFFFF",
             "date_time": "#FFFFFF",
         },
-        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_cn", "prog_cont_cn_b", "venue_label_cn", "venue_cont_cn_c", "prog_label_eg", "prog_cont_eg", "venue_label_eg", "venue_cont_eg", "qr_label_cn", "qr_label_eg", "qr_tip_b", "qr_tip_eg", "qr", "logo"],
-        "coords": {"logo": (75, 62), "title_text_cn": (585, 1006), "title_text_eg": (80, 1022), "date_num": (80, 728), "date_year_week": (80, 684), "date_time":(80, 820), "prog_label_cn": (585, 1350), "prog_cont_cn_b": (585, 1398), "venue_label_cn": (585, 1533), "venue_cont_cn_c": (585, 1581), "prog_label_eg": (80,1342), "prog_cont_eg": (80, 1390), "venue_label_eg": (80, 1534), "venue_cont_eg": (80, 1582), "qr_label_cn":(585, 1716), "qr_tip_b":(585, 1764), "qr_label_eg": (80,1726), "qr_tip_eg":(80, 1774), "qr": (886, 1690)},
-        "fixed_text2": [{"content": "公益活动", "pos": (900, 1835), "font": "f_qr_text"}]
+        "field_defaults": {"public_benefit_text": "公益活动"},
+        "include": ["title_text_cn", "title_text_eg", "date_num", "date_year_week", "date_time", "prog_label_cn", "prog_cont_cn_b", "venue_label_cn", "venue_cont_cn_c", "prog_label_eg", "prog_cont_eg", "venue_label_eg", "venue_cont_eg", "qr_label_cn", "qr_label_eg", "qr_tip_b", "qr_tip_eg", "public_benefit_text", "qr", "logo"],
+        "coords": {"logo": (75, 62), "title_text_cn": (585, 1006), "title_text_eg": (80, 1022), "date_num": (80, 728), "date_year_week": (80, 684), "date_time":(80, 820), "prog_label_cn": (585, 1350), "prog_cont_cn_b": (585, 1398), "venue_label_cn": (585, 1533), "venue_cont_cn_c": (585, 1581), "prog_label_eg": (80,1342), "prog_cont_eg": (80, 1390), "venue_label_eg": (80, 1534), "venue_cont_eg": (80, 1582), "qr_label_cn":(585, 1716), "qr_tip_b":(585, 1764), "qr_label_eg": (80,1726), "qr_tip_eg":(80, 1774), "public_benefit_text": (900, 1835), "qr": (886, 1690)}
     },
     "文案主导型B9": {
         "bg_img": "bg9.png", "color": "#1A1A1A", "align": "la",
         # 中英标题：水平居中 + 顶边对齐 y（见 field_anchors 的 hcenter_la 绘制分支）
         "field_anchors": {"title_text_mm1": "hcenter_la", "title_text_mm2": "hcenter_la"},
-        "include": ["title_text_mm1", "title_text_mm2", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_b", "qr_label_bil", "qr_tip_a", "qr", "logo"],
-        "coords": {"logo": (75, 62), "title_text_mm1": (540, 218), "title_text_mm2": (540, 385), "date_num": (80, 619), "date_year_week": (80, 575), "date_time":(80, 711), "prog_label_bil":(92, 1440), "prog_cont_cn_a":(92, 1492), "venue_label_bil": (92, 1583), "venue_cont_cn_b": (92, 1635), "qr_label_bil":(92, 1726), "qr_tip_a":(92, 1781), "qr":  (886, 1690)},
-        "fixed_text2": [{"content": "公益活动", "pos": (900, 1835), "font": "f_qr_text"}]
+        "field_defaults": {"public_benefit_text": "公益活动"},
+        "include": ["title_text_mm1", "title_text_mm2", "date_num", "date_year_week", "date_time", "prog_label_bil", "prog_cont_cn_a", "venue_label_bil", "venue_cont_cn_b", "qr_label_bil", "qr_tip_a", "public_benefit_text", "qr", "logo"],
+        "coords": {"logo": (75, 62), "title_text_mm1": (540, 218), "title_text_mm2": (540, 385), "date_num": (80, 619), "date_year_week": (80, 575), "date_time":(80, 711), "prog_label_bil":(92, 1440), "prog_cont_cn_a":(92, 1492), "venue_label_bil": (92, 1583), "venue_cont_cn_b": (92, 1635), "qr_label_bil":(92, 1726), "qr_tip_a":(92, 1781), "public_benefit_text": (900, 1835), "qr":  (886, 1690)}
     },
 
     # ================================================================
@@ -258,7 +258,7 @@ TEMPLATE_MASTER_CONFIG = {
     # 「流程/Schedule」左上；7 步为两列网格：左序号+时间同 x，右中英名称同 x，上下行等距
     # ================================================================
     "信息图表型C1": {
-        "bg_img": "bg_info1.png", "color": "#1A1A1A", "align": "la",
+        "bg_img": "bg_info1.png", "color": "#1A1A1A", "align": "la", "logo_anchor": "mm",
         "include": [
             "logo",
             "sched_label_cn", "sched_label_eg",
@@ -283,7 +283,7 @@ TEMPLATE_MASTER_CONFIG = {
             "sched_num_5":     (380, 1011),  "sched_time_5":   (380, 1128),  "sched_name_cn_5": (600, 1044),  "sched_name_eg_5": (600, 1120),
             "sched_num_6":     (380, 1213), "sched_time_6":    (380, 1330), "sched_name_cn_6": (600, 1246), "sched_name_eg_6": (600, 1322),
             "sched_num_7":     (380, 1415), "sched_time_7":    (380, 1532), "sched_name_cn_7": (600, 1448), "sched_name_eg_7": (600, 1524),
-            "logo": (500, 1810),
+            "logo": (540, 1810),
         },
     },
 
@@ -292,7 +292,7 @@ TEMPLATE_MASTER_CONFIG = {
     # 参照半透明卡片：列表偏左；「流程」竖排 +「Schedule」靠右、压在列表区块上方；两列网格顶对齐
     # ================================================================
     "信息图表型C2": {
-        "bg_img": "bg_info2.png", "color": "#FFFFFF", "align": "la",
+        "bg_img": "bg_info2.png", "color": "#FFFFFF", "align": "la", "logo_anchor": "mm",
         "include": [
             "logo",
             "sched_label_cn", "sched_label_eg",
@@ -315,7 +315,7 @@ TEMPLATE_MASTER_CONFIG = {
             "sched_num_5":     (328, 1172), "sched_time_5":    (218, 1290), "sched_name_cn_5": (448, 1204), "sched_name_eg_5": (448, 1284),
             "sched_num_6":     (328, 1349), "sched_time_6":    (218, 1467), "sched_name_cn_6": (448, 1381), "sched_name_eg_6": (448, 1461),
             "sched_num_7":     (328, 1526), "sched_time_7":    (218, 1644), "sched_name_cn_7": (448, 1558), "sched_name_eg_7": (448, 1638),
-            "logo": (500, 48),
+            "logo": (540, 48),
         },
     },
 
@@ -324,7 +324,7 @@ TEMPLATE_MASTER_CONFIG = {
     # 与 C2 坐标一致，仅底图与字色不同（bg_info3 + 深色字）
     # ================================================================
     "信息图表型C3": {
-        "bg_img": "bg_info3.png", "color": "#1A1A1A", "align": "la",
+        "bg_img": "bg_info3.png", "color": "#1A1A1A", "align": "la", "logo_anchor": "mm",
         "include": [
             "logo",
             "sched_label_cn", "sched_label_eg",
@@ -346,7 +346,7 @@ TEMPLATE_MASTER_CONFIG = {
             "sched_num_5":     (328, 1172), "sched_time_5":    (218, 1290), "sched_name_cn_5": (448, 1204), "sched_name_eg_5": (448, 1284),
             "sched_num_6":     (328, 1349), "sched_time_6":    (218, 1467), "sched_name_cn_6": (448, 1381), "sched_name_eg_6": (448, 1461),
             "sched_num_7":     (328, 1526), "sched_time_7":    (218, 1644), "sched_name_cn_7": (448, 1558), "sched_name_eg_7": (448, 1638),
-            "logo": (500, 48),
+            "logo": (540, 48),
         },
     },
 
@@ -354,7 +354,7 @@ TEMPLATE_MASTER_CONFIG = {
     # 信息图表型C4：多日课程 · 浅底左标题双行版（每天两行：每行「时间 + 内容」）
     # ================================================================
     "信息图表型C4": {
-        "bg_img": "bg_info4.png", "color": "#1A1A1A", "align": "la",
+        "bg_img": "bg_info4.png", "color": "#1A1A1A", "align": "la", "logo_anchor": "mm",
         "include": [
             "course_title_cn", "course_title_eg",
             "day_date_1", "day_week_1", "day_time_1", "day_cont_1", "day_time2_1", "day_cont2_1",
@@ -386,7 +386,7 @@ TEMPLATE_MASTER_CONFIG = {
             "course_qr_tip_cn": (81, 1400),
             "course_qr_tip_eg": (81, 1640),
             "qr":   (80, 1502),
-            "logo": (500, 1810),
+            "logo": (540, 1810),
         },
     },
 
